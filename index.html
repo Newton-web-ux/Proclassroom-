@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Ledger — Classroom Dashboard</title>
+<title>Pro Classroom — Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -289,6 +289,20 @@
   }
   .work-card h4{ margin:0 0 4px; font-size:14.5px; font-family:'Fraunces',serif; color:var(--ink); }
   .work-card .wc-meta{ font-size:12px; color:#7b8a80; }
+  .work-card .wc-desc{ font-size:12.5px; color:var(--ink-2); margin-top:8px; line-height:1.5; }
+  .work-card .wc-attachments{ display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .work-card .wc-attach-thumb{
+    width:46px; height:46px; border-radius:7px; overflow:hidden;
+    border:1px solid var(--line); display:block; flex-shrink:0;
+  }
+  .work-card .wc-attach-thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .work-card .wc-attach-chip{
+    font-size:11px; font-weight:600; color:var(--ink-2);
+    background:var(--parchment); border:1px solid var(--line); border-radius:6px;
+    padding:5px 9px; max-width:170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    display:inline-flex; align-items:center; gap:4px;
+  }
+  .work-card .wc-attach-chip:hover{ border-color:var(--line-strong); }
   .work-card .wc-foot{ display:flex; align-items:center; justify-content:space-between; margin-top:12px; }
 
   table.roster{ width:100%; border-collapse:collapse; }
@@ -417,8 +431,8 @@
 
 <div id="loginScreen">
   <div class="login-card">
-    <div class="mark">L</div>
-    <h1>Welcome to Ledger</h1>
+    <div class="mark">P</div>
+    <h1>Welcome to Pro Classroom</h1>
     <p>Sign in with your Google account to open your classroom dashboard.</p>
     <button id="googleBtn" type="button">Sign in with Google</button>
     <div id="loginError" style="display:none; color:var(--red-pen); font-size:12.5px; margin-top:14px;"></div>
@@ -434,7 +448,7 @@
 
 <script type="module">
 /* =========================================================
-   LEDGER — Classroom Dashboard
+   PRO CLASSROOM — Dashboard
    Firebase Auth (Google sign-in) + Firestore data store.
    Teachers create classes and get a join code; students join
    a class with that code and see a read-only / participatory
@@ -564,9 +578,34 @@ async function joinClassByCode(codeRaw){
   return { ok:true, classId:docSnap.id };
 }
 
+function isImageType(type){ return !!type && type.startsWith('image/'); }
+
+const MAX_ATTACHMENT_BYTES = 700 * 1024; // ~700KB per file, keeps the Firestore 1MB doc limit safe
+
+function readFileAsDataURL(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=> resolve(reader.result);
+    reader.onerror = ()=> reject(reader.error || new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function encodeAttachments(files){
+  const encoded = [];
+  for(const file of files){
+    if(file.size > MAX_ATTACHMENT_BYTES){
+      throw new Error(`"${file.name}" is ${(file.size/1024).toFixed(0)}KB — attachments must be under ${(MAX_ATTACHMENT_BYTES/1024).toFixed(0)}KB.`);
+    }
+    const dataUrl = await readFileAsDataURL(file);
+    encoded.push({ name: file.name, type: file.type || '', size: file.size, url: dataUrl });
+  }
+  return encoded;
+}
+
 async function addAssignmentFn(classId, a){
   await updateDoc(doc(dbFire,'classes',classId), {
-    assignments: arrayUnion({ id: uid('a'), title:a.title, due:a.due, points:a.points, desc:a.desc || '' })
+    assignments: arrayUnion({ id: uid('a'), title:a.title, due:a.due, points:a.points, desc:a.desc || '', attachments: a.attachments || [] })
   });
 }
 
@@ -737,10 +776,10 @@ function renderSidebar(){
   return `
   <aside class="sidebar" id="sidebar">
     <div class="brand">
-      <div class="mark">L</div>
+      <div class="mark">P</div>
       <div>
-        <div class="name">Ledger</div>
-        <div class="tag">Classroom</div>
+        <div class="name">Pro Classroom</div>
+        <div class="tag">Dashboard</div>
       </div>
     </div>
     <div class="nav-section">
@@ -1009,10 +1048,20 @@ function renderClasswork(c){
     <div class="card-grid">
       ${c.assignments.length? c.assignments.map(a=>{
         const st = statusPill(a.due); const dt = fmtDate(a.due);
+        const atts = a.attachments || [];
         return `<div class="work-card">
           <div class="wc-icon">&#128221;</div>
           <h4>${a.title}</h4>
           <div class="wc-meta">${a.points} points &middot; Due ${dt.mon} ${dt.day}</div>
+          ${a.desc? `<div class="wc-desc">${a.desc}</div>` : ''}
+          ${atts.length? `
+            <div class="wc-attachments">
+              ${atts.map(att=> isImageType(att.type)
+                ? `<a href="${att.url}" target="_blank" rel="noopener" class="wc-attach-thumb" title="${att.name}"><img src="${att.url}" alt="${att.name}" /></a>`
+                : `<a href="${att.url}" target="_blank" rel="noopener" class="wc-attach-chip" title="${att.name}">&#128206; ${att.name.length>18? att.name.slice(0,18)+'…':att.name}</a>`
+              ).join('')}
+            </div>
+          ` : ''}
           <div class="wc-foot">
             <span class="pill ${st.cls}">${st.text}</span>
           </div>
@@ -1168,6 +1217,11 @@ function openModal(type, preset){
           <div class="field"><label>Points</label><input id="mPoints" type="number" value="100" min="0" /></div>
         </div>
         <div class="field"><label>Instructions</label><textarea id="mDesc" placeholder="Assignment details for students..."></textarea></div>
+        <div class="field">
+          <label>Attach files or images (optional)</label>
+          <input id="mAttachments" type="file" multiple accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip" />
+          <div class="field-note" style="margin-top:6px;">Each file must be under 700KB (stored directly in the class record).</div>
+        </div>
         `}
       </div>
       <div class="modal-foot">
@@ -1301,12 +1355,29 @@ document.addEventListener('click', async (e)=>{
     const due = document.getElementById('mDue').value || state.todayISO;
     const points = Number(document.getElementById('mPoints').value) || 100;
     const desc = document.getElementById('mDesc').value.trim();
+    const fileInput = document.getElementById('mAttachments');
+    const files = (fileInput && fileInput.files) ? Array.from(fileInput.files) : [];
     if(!title || !cid) return;
+    const saveBtn = e.target;
+    const originalLabel = saveBtn.textContent;
+    saveBtn.disabled = true;
     try{
-      await addAssignmentFn(cid, { title, due, points, desc });
+      let attachments = [];
+      if(files.length){
+        saveBtn.textContent = 'Encoding files…';
+        attachments = await encodeAttachments(files);
+      }
+      saveBtn.textContent = 'Saving…';
+      await addAssignmentFn(cid, { title, due, points, desc, attachments });
       closeModal();
       render();
-    }catch(err){ console.error('Add assignment failed', err); }
+    }catch(err){
+      console.error('Add assignment failed', err);
+      const noteEl = document.querySelector('#modalBody .field-note');
+      if(noteEl){ noteEl.style.color = 'var(--red-pen)'; noteEl.textContent = err.message || 'Could not save assignment.'; }
+      saveBtn.disabled = false;
+      saveBtn.textContent = originalLabel;
+    }
   }
 
   if(e.target.matches('[data-save="newStudent"]')){
