@@ -6,7 +6,6 @@
 <title>Ledger — Classroom Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
     --ink:#1F3A2E;
@@ -108,8 +107,9 @@
   .class-tab:hover{ background:rgba(241,237,224,.07); }
   .class-tab.active{ background:rgba(241,237,224,.14); border-left-color:var(--ochre-2); color:#fff; }
   .class-tab .ct-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .class-tab .ct-role{ margin-left:auto; font-size:9.5px; text-transform:uppercase; letter-spacing:.04em; color:rgba(241,237,224,.4); flex-shrink:0; }
 
-  .sidebar-foot{ margin-top:auto; padding:14px 20px 4px; }
+  .sidebar-foot{ margin-top:auto; padding:14px 20px 4px; display:flex; flex-direction:column; gap:8px; }
   .new-class-btn{
     width:100%; padding:9px 10px; border-radius:7px; border:1px dashed rgba(241,237,224,.35);
     background:transparent; color:rgba(241,237,224,.75); font-size:13px; font-weight:500;
@@ -239,6 +239,17 @@
   .class-banner .cb-sub{ font-size:12px; text-transform:uppercase; letter-spacing:.08em; opacity:.75; font-weight:600;}
   .class-banner h1{ font-size:30px; margin:6px 0 4px; color:#fff; }
   .class-banner .cb-meta{ font-size:13px; opacity:.85; }
+  .class-banner .cb-code{
+    display:inline-flex; align-items:center; gap:8px; margin-top:12px;
+    background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.2);
+    border-radius:20px; padding:6px 8px 6px 14px; font-size:12.5px;
+  }
+  .class-banner .cb-code b{ font-family:'IBM Plex Mono',monospace; letter-spacing:.1em; font-size:13px; }
+  .cb-code-btn{
+    border:none; background:rgba(255,255,255,.18); color:#fff; border-radius:14px;
+    padding:4px 10px; font-size:11px; font-weight:700;
+  }
+  .cb-code-btn:hover{ background:rgba(255,255,255,.3); }
 
   .tab-strip{
     display:flex; gap:4px; margin:18px 0 20px; border-bottom:1px solid var(--line-strong);
@@ -349,6 +360,8 @@
   .swatch-opt{ width:26px;height:26px;border-radius:50%; border:2px solid transparent; cursor:pointer; }
   .swatch-opt.sel{ border-color:var(--ink); }
   .modal-foot{ padding:16px 22px; border-top:1px solid var(--line); display:flex; justify-content:flex-end; gap:10px; }
+  .field-note{ font-size:12px; color:#7b8a80; }
+  .field-error{ font-size:12.5px; color:var(--red-pen); display:none; }
 
   .empty-state{ text-align:center; padding:50px 20px; color:#7b8a80; }
   .empty-state .es-icon{ font-size:32px; margin-bottom:10px; }
@@ -390,7 +403,13 @@
   .login-card p{ font-size:13.5px; color:#5b6b60; margin:0 0 26px; line-height:1.5; }
   .login-card .divider{ height:1px; background:var(--line); margin:24px 0 20px; }
   .login-card .fineprint{ font-size:11.5px; color:#8b978e; margin-top:20px; line-height:1.5; }
-  #googleBtn{ display:flex; justify-content:center; min-height:44px; }
+  #googleBtn{
+    display:flex; justify-content:center; align-items:center; gap:10px;
+    width:100%; min-height:46px; border-radius:10px;
+    background:var(--ink); color:var(--chalk); font-weight:600; font-size:14px; border:none;
+  }
+  #googleBtn:hover{ background:var(--ink-2); }
+  #googleBtn:disabled{ opacity:.6; cursor:default; }
   .login-hidden{ display:none !important; }
 </style>
 </head>
@@ -401,9 +420,9 @@
     <div class="mark">L</div>
     <h1>Welcome to Ledger</h1>
     <p>Sign in with your Google account to open your classroom dashboard.</p>
-    <div id="googleBtn"></div>
+    <button id="googleBtn" type="button">Sign in with Google</button>
     <div id="loginError" style="display:none; color:var(--red-pen); font-size:12.5px; margin-top:14px;"></div>
-    <div class="fineprint">Your classes, assignments, and grades are saved to your own row in a Google Sheet, keyed to your Google account email.</div>
+    <div class="fineprint">Teachers can create classes and share a join code. Students use that code to join a class and see the teacher's stream, classwork, and their own grades. Data is stored securely in Firestore, scoped to your account.</div>
   </div>
 </div>
 
@@ -413,189 +432,205 @@
   <div class="modal" id="modalBody"></div>
 </div>
 
-<script>
+<script type="module">
 /* =========================================================
    LEDGER — Classroom Dashboard
-   Vanilla JS, single-file app. In-memory data store (no
-   browser storage APIs are used per environment constraints).
+   Firebase Auth (Google sign-in) + Firestore data store.
+   Teachers create classes and get a join code; students join
+   a class with that code and see a read-only / participatory
+   view scoped to their own grades.
 ========================================================= */
 
-/* ---------------- Auth config ---------------- */
-const GOOGLE_CLIENT_ID = '384904424093-j1a6kupjerhjufurpvur4hbik6k90bla.apps.googleusercontent.com';
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+import {
+  getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as fbSignOut
+} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+import {
+  getFirestore, collection, addDoc, doc, updateDoc, onSnapshot,
+  query, where, arrayUnion, deleteField, serverTimestamp, getDocs
+} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
-/* ---------------- Cloud storage config ----------------
-   Paste the /exec URL of your deployed Google Apps Script
-   web app below (see Code.gs). Data is stored in a Google
-   Sheet, one row per signed-in user's email. */
-const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzz4RA0IUvYgLHlvDDzni_GDgR6ew0fzbvj9j4ZZesaFAjTU0QF5mZD8KqvcVQ0jMC1/exec';
+/* ---------------- Firebase config ---------------- */
+const firebaseConfig = {
+  apiKey: "AIzaSyDvMlnUNrWyDi0-cW9GKBrNnAxBjwgZi8w",
+  authDomain: "pro-chat-be1aa.firebaseapp.com",
+  projectId: "pro-chat-be1aa",
+  storageBucket: "pro-chat-be1aa.firebasestorage.app",
+  messagingSenderId: "675633102778",
+  appId: "1:675633102778:web:8f68a16e2c7384fd52a783"
+};
 
-function isCloudConfigured(){
-  return !!APPS_SCRIPT_URL && APPS_SCRIPT_URL.indexOf('PASTE_YOUR') === -1;
-}
+const fbApp = initializeApp(firebaseConfig);
+const auth = getAuth(fbApp);
+const dbFire = getFirestore(fbApp);
+const provider = new GoogleAuthProvider();
 
-/* ---------------- Data store ---------------- */
+/* ---------------- App state ---------------- */
 const COLORS = ['#2C4A3B','#7A4B2E','#3C5A78','#7A3B4A','#4B4A78','#5C6B2C'];
 
 function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,9); }
+
+function genJoinCode(){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no ambiguous chars (0/O, 1/I)
+  let s = '';
+  for(let i=0;i<6;i++) s += chars[Math.floor(Math.random()*chars.length)];
+  return s;
+}
 
 const state = {
   view: 'dashboard',        // dashboard | calendar | class
   activeClassId: null,
   classTab: 'stream',       // stream | classwork | people | grades
   todayISO: new Date().toISOString().slice(0,10),
-  user: null,                // { name, email, picture } once signed in
-  syncStatus: 'idle',        // idle | loading | saving | saved | error
+  user: null,                // { uid, name, email, picture }
+  connStatus: 'idle',        // idle | connecting | live | error
 };
 
-// No pre-seeded data — the dashboard starts empty until the user creates
-// classes, or until their saved data loads from Google Sheets.
-const db = {
-  classes: []
-};
+const db = { classes: [] };
+let ownedMap = {}, memberMap = {};
+let unsubOwned = null, unsubMember = null;
 
-/* ---------------- Cloud sync (Google Apps Script + Sheets) ---------------- */
-async function loadFromCloud(email){
-  try{
-    const res = await fetch(`${APPS_SCRIPT_URL}?action=load&email=${encodeURIComponent(email)}`);
-    const json = await res.json();
-    if(json.status === 'ok'){
-      const classes = (json.data && Array.isArray(json.data.classes)) ? json.data.classes : [];
-      return { ok:true, classes };
-    }
-    return { ok:false };
-  }catch(err){
-    console.error('Cloud load failed', err);
-    return { ok:false };
-  }
-}
-
-let saveTimer = null;
-function scheduleSave(){
-  if(!isCloudConfigured() || !state.user) return;
-  state.syncStatus = 'saving';
-  updateSyncIndicator();
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveToCloud, 700);
-}
-
-async function saveToCloud(){
-  if(!state.user || !isCloudConfigured()) return;
-  try{
-    // text/plain avoids a CORS preflight, which Apps Script web apps don't handle.
-    await fetch(APPS_SCRIPT_URL, {
-      method:'POST',
-      headers:{ 'Content-Type':'text/plain;charset=utf-8' },
-      body: JSON.stringify({ email: state.user.email, data: { classes: db.classes } })
-    });
-    state.syncStatus = 'saved';
-  }catch(err){
-    console.error('Cloud save failed', err);
-    state.syncStatus = 'error';
-  }
-  updateSyncIndicator();
-}
-
-function syncLabel(){
-  if(!isCloudConfigured()) return { text:'Cloud sync not configured', cls:'sync-error' };
-  const map = {
-    idle:    { text:'', cls:'' },
-    loading: { text:'Loading your data…', cls:'sync-saving' },
-    saving:  { text:'Saving…', cls:'sync-saving' },
-    saved:   { text:'Synced', cls:'sync-saved' },
-    error:   { text:'Sync error — check connection', cls:'sync-error' },
+/* ---------------- Firestore helpers ---------------- */
+function docToClass(docSnap){
+  const d = docSnap.data();
+  return {
+    id: docSnap.id,
+    name: d.name, section: d.section, room: d.room, color: d.color,
+    ownerId: d.ownerId, ownerName: d.ownerName, ownerEmail: d.ownerEmail,
+    joinCode: d.joinCode,
+    memberUids: d.memberUids || [],
+    students: d.students || [],
+    assignments: d.assignments || [],
+    grades: d.grades || {},
+    stream: d.stream || []
   };
-  return map[state.syncStatus] || map.idle;
 }
 
-function updateSyncIndicator(){
-  const el = document.getElementById('syncIndicator');
-  if(!el) return;
-  const m = syncLabel();
-  el.textContent = m.text;
-  el.className = 'sync-indicator ' + m.cls;
-}
-
-/* ---------------- Google Sign-In ---------------- */
-function decodeJwt(token){
-  try{
-    const base64Url = token.split('.')[1];
-    const base64 = base64Url.replace(/-/g,'+').replace(/_/g,'/');
-    const json = decodeURIComponent(atob(base64).split('').map(c=>
-      '%' + ('00'+c.charCodeAt(0).toString(16)).slice(-2)
-    ).join(''));
-    return JSON.parse(json);
-  }catch(e){
-    console.error('Failed to decode credential', e);
-    return null;
+function mergeClasses(){
+  const merged = { ...memberMap, ...ownedMap };
+  db.classes = Object.values(merged).sort((a,b)=> a.name.localeCompare(b.name));
+  if(state.activeClassId && !merged[state.activeClassId]){
+    state.view = 'dashboard'; state.activeClassId = null;
   }
-}
-
-async function handleCredentialResponse(response){
-  const payload = decodeJwt(response.credential);
-  if(!payload){
-    const err = document.getElementById('loginError');
-    err.style.display = 'block';
-    err.textContent = 'Sign-in failed — please try again.';
-    return;
-  }
-  state.user = {
-    name: payload.name || payload.email,
-    email: payload.email,
-    picture: payload.picture || ''
-  };
-  document.getElementById('loginScreen').classList.add('login-hidden');
-  document.getElementById('app').classList.remove('login-hidden');
-
-  state.syncStatus = isCloudConfigured() ? 'loading' : 'idle';
+  state.connStatus = 'live';
   render();
+}
 
-  if(isCloudConfigured()){
-    const result = await loadFromCloud(state.user.email);
-    if(result.ok){
-      db.classes = result.classes;
-      state.syncStatus = 'saved';
-    }else{
-      state.syncStatus = 'error';
-    }
+function listenClasses(){
+  const uidVal = state.user.uid;
+  if(unsubOwned) unsubOwned();
+  if(unsubMember) unsubMember();
+
+  const ownedQ = query(collection(dbFire,'classes'), where('ownerId','==',uidVal));
+  unsubOwned = onSnapshot(ownedQ, snap=>{
+    ownedMap = {};
+    snap.forEach(d=> ownedMap[d.id] = docToClass(d));
+    mergeClasses();
+  }, err=>{ console.error('owned listener error', err); state.connStatus='error'; render(); });
+
+  const memberQ = query(collection(dbFire,'classes'), where('memberUids','array-contains',uidVal));
+  unsubMember = onSnapshot(memberQ, snap=>{
+    memberMap = {};
+    snap.forEach(d=> memberMap[d.id] = docToClass(d));
+    mergeClasses();
+  }, err=>{ console.error('member listener error', err); state.connStatus='error'; render(); });
+}
+
+async function createClassFn(name, section, room, color){
+  const ref = await addDoc(collection(dbFire,'classes'), {
+    name, section: section || 'Section 1', room: room || 'TBD', color,
+    ownerId: state.user.uid, ownerName: state.user.name, ownerEmail: state.user.email,
+    joinCode: genJoinCode(),
+    memberUids: [], students: [], assignments: [], grades: {}, stream: [],
+    createdAt: serverTimestamp()
+  });
+  return ref.id;
+}
+
+async function joinClassByCode(codeRaw){
+  const code = (codeRaw || '').trim().toUpperCase();
+  if(!code) return { ok:false, msg:'Enter a class code.' };
+  const q = query(collection(dbFire,'classes'), where('joinCode','==',code));
+  const snap = await getDocs(q);
+  if(snap.empty) return { ok:false, msg:'No class found with that code.' };
+  const docSnap = snap.docs[0];
+  const data = docSnap.data();
+  if(data.ownerId === state.user.uid) return { ok:false, msg:"You're the teacher of this class." };
+  if((data.memberUids||[]).includes(state.user.uid)) return { ok:true, classId:docSnap.id };
+  await updateDoc(doc(dbFire,'classes',docSnap.id), {
+    memberUids: arrayUnion(state.user.uid),
+    students: arrayUnion({ id: state.user.uid, uid: state.user.uid, name: state.user.name, email: state.user.email })
+  });
+  return { ok:true, classId:docSnap.id };
+}
+
+async function addAssignmentFn(classId, a){
+  await updateDoc(doc(dbFire,'classes',classId), {
+    assignments: arrayUnion({ id: uid('a'), title:a.title, due:a.due, points:a.points, desc:a.desc || '' })
+  });
+}
+
+async function addStudentFn(classId, name){
+  await updateDoc(doc(dbFire,'classes',classId), {
+    students: arrayUnion({ id: uid('s'), name })
+  });
+}
+
+async function postAnnouncementFn(classId, text){
+  const time = new Date().toLocaleString('en', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+  await updateDoc(doc(dbFire,'classes',classId), {
+    stream: arrayUnion({ id: uid('p'), author: state.user.name, time, text })
+  });
+}
+
+async function updateGradeFn(classId, studentId, assignmentId, val){
+  const fieldPath = `grades.${studentId}.${assignmentId}`;
+  if(val === null){
+    await updateDoc(doc(dbFire,'classes',classId), { [fieldPath]: deleteField() });
+  }else{
+    await updateDoc(doc(dbFire,'classes',classId), { [fieldPath]: val });
+  }
+}
+
+/* ---------------- Auth ---------------- */
+function handleGoogleSignIn(){
+  const btn = document.getElementById('googleBtn');
+  const err = document.getElementById('loginError');
+  if(err){ err.style.display='none'; }
+  if(btn){ btn.disabled = true; btn.textContent = 'Signing in…'; }
+  signInWithPopup(auth, provider).catch(e=>{
+    console.error('Sign-in failed', e);
+    if(err){ err.style.display='block'; err.textContent = 'Sign-in failed — please try again.'; }
+  }).finally(()=>{
+    if(btn){ btn.disabled = false; btn.textContent = 'Sign in with Google'; }
+  });
+}
+
+onAuthStateChanged(auth, (user)=>{
+  if(user){
+    state.user = { uid:user.uid, name: user.displayName || user.email, email: user.email, picture: user.photoURL || '' };
+    document.getElementById('loginScreen').classList.add('login-hidden');
+    document.getElementById('app').classList.remove('login-hidden');
+    state.connStatus = 'connecting';
     render();
+    listenClasses();
+  }else{
+    if(unsubOwned) unsubOwned();
+    if(unsubMember) unsubMember();
+    state.user = null; state.view='dashboard'; state.activeClassId=null; state.connStatus='idle';
+    db.classes = []; ownedMap = {}; memberMap = {};
+    document.getElementById('app').classList.add('login-hidden');
+    document.getElementById('loginScreen').classList.remove('login-hidden');
   }
-}
+});
 
-function initGoogleAuth(){
-  if(typeof google === 'undefined' || !google.accounts){
-    // Google Identity script hasn't loaded yet (e.g. blocked network) — retry briefly.
-    setTimeout(initGoogleAuth, 300);
-    return;
-  }
-  google.accounts.id.initialize({
-    client_id: GOOGLE_CLIENT_ID,
-    callback: handleCredentialResponse,
-    auto_select: false
-  });
-  google.accounts.id.renderButton(document.getElementById('googleBtn'), {
-    theme:'outline', size:'large', width:280, shape:'pill', text:'signin_with'
-  });
-  google.accounts.id.prompt();
-}
+function signOutUser(){ fbSignOut(auth); }
 
-function signOut(){
-  if(typeof google !== 'undefined' && google.accounts){
-    google.accounts.id.disableAutoSelect();
-  }
-  state.user = null;
-  state.view = 'dashboard';
-  state.activeClassId = null;
-  state.syncStatus = 'idle';
-  db.classes = [];
-  document.getElementById('app').classList.add('login-hidden');
-  document.getElementById('loginScreen').classList.remove('login-hidden');
-}
-
-window.addEventListener('DOMContentLoaded', initGoogleAuth);
-
+document.getElementById('googleBtn').addEventListener('click', handleGoogleSignIn);
 
 /* ---------------- Helpers ---------------- */
 function getClass(id){ return db.classes.find(c=>c.id===id); }
+function isTeacher(c){ return !!(c && state.user && c.ownerId === state.user.uid); }
 function fmtDate(iso){
   const d = new Date(iso+'T00:00:00');
   return { day:d.getDate(), mon:d.toLocaleString('en',{month:'short'}) };
@@ -660,6 +695,15 @@ function gradeDistribution(){
   });
   return buckets;
 }
+function connLabel(){
+  const map = {
+    idle:       { text:'', cls:'' },
+    connecting: { text:'Connecting…', cls:'sync-saving' },
+    live:       { text:'● Live', cls:'sync-saved' },
+    error:      { text:'Connection error', cls:'sync-error' },
+  };
+  return map[state.connStatus] || map.idle;
+}
 
 /* ---------------- Rendering ---------------- */
 function render(){
@@ -697,11 +741,14 @@ function renderSidebar(){
         <button class="class-tab ${state.view==='class'&&activeId===c.id?'active':''}" data-open-class="${c.id}">
           <span class="swatch" style="background:${c.color}"></span>
           <span class="ct-name">${c.name}</span>
+          <span class="ct-role">${isTeacher(c)?'Teacher':'Student'}</span>
         </button>
       `).join('')}
+      ${db.classes.length===0? `<div style="padding:8px 10px; font-size:12px; color:rgba(241,237,224,.45);">No classes yet</div>` : ''}
     </div>
     <div class="sidebar-foot">
       <button class="new-class-btn" data-modal="newClass">+ Create class</button>
+      <button class="new-class-btn" data-modal="joinClass">Join with code</button>
     </div>
   </aside>`;
 }
@@ -719,7 +766,7 @@ function renderTopbar(){
     <div class="topbar-actions">
       <button class="btn btn-ghost" data-modal="newClass">+ Class</button>
       <button class="btn btn-primary" data-modal="newAssignment">+ Assignment</button>
-      <span id="syncIndicator" class="sync-indicator ${syncLabel().cls}">${syncLabel().text}</span>
+      <span id="syncIndicator" class="sync-indicator ${connLabel().cls}">${connLabel().text}</span>
       ${renderUserMenu()}
     </div>
   </div>`;
@@ -757,7 +804,7 @@ function renderDashboard(){
     <div class="page-head">
       <div class="eyebrow">Good afternoon</div>
       <h1>Welcome back, ${firstName(state.user?.name)}</h1>
-      <p>${s.totalClasses? `Here's what's happening across your ${s.totalClasses} class${s.totalClasses===1?'':'es'} today.` : `You haven't created any classes yet — get started below.`}</p>
+      <p>${s.totalClasses? `Here's what's happening across your ${s.totalClasses} class${s.totalClasses===1?'':'es'} today.` : `You haven't joined or created any classes yet — get started below.`}</p>
     </div>
 
     <div class="stat-grid">
@@ -787,10 +834,11 @@ function renderDashboard(){
       <div class="panel">
         <div class="empty-state">
           <div class="es-icon">&#127891;</div>
-          <h4>Create your first class</h4>
-          <p>Set up a class to start posting announcements, assignments, and tracking grades.</p>
-          <div style="margin-top:16px;">
+          <h4>Create or join your first class</h4>
+          <p>Teachers create a class and share the join code. Students enter that code to join.</p>
+          <div style="margin-top:16px; display:flex; gap:10px; justify-content:center;">
             <button class="btn btn-primary" data-modal="newClass">+ Create class</button>
+            <button class="btn btn-ghost" data-modal="joinClass">Join with code</button>
           </div>
         </div>
       </div>
@@ -892,12 +940,19 @@ function renderCalendar(){
 function renderClass(){
   const c = getClass(state.activeClassId);
   if(!c) return `<div class="empty-state"><h4>Class not found</h4></div>`;
+  const teacher = isTeacher(c);
   const tabs = ['stream','classwork','people','grades'];
   return `
     <div class="class-banner" style="--banner-color-1:${c.color};--banner-color-2:${c.color}dd">
       <div class="cb-sub">${c.section}</div>
       <h1>${c.name}</h1>
-      <div class="cb-meta">${c.room} &middot; ${c.students.length} students &middot; ${c.assignments.length} assignments</div>
+      <div class="cb-meta">${c.room} &middot; ${c.students.length} students &middot; ${c.assignments.length} assignments${!teacher? ' &middot; Taught by '+c.ownerName : ''}</div>
+      ${teacher? `
+        <div class="cb-code">
+          Class code: <b>${c.joinCode}</b>
+          <button class="cb-code-btn" data-copy-code="${c.joinCode}">Copy</button>
+        </div>
+      ` : ''}
     </div>
     <div class="tab-strip">
       ${tabs.map(t=>`<button class="tab-btn ${state.classTab===t?'active':''}" data-classtab="${t}">${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}
@@ -932,9 +987,10 @@ function renderStream(c){
 }
 
 function renderClasswork(c){
+  const teacher = isTeacher(c);
   return `
     <div style="display:flex; justify-content:flex-end; margin-bottom:14px;">
-      <button class="btn btn-primary" data-modal="newAssignment" data-preset-class="${c.id}">+ Create assignment</button>
+      ${teacher? `<button class="btn btn-primary" data-modal="newAssignment" data-preset-class="${c.id}">+ Create assignment</button>` : ''}
     </div>
     <div class="card-grid">
       ${c.assignments.length? c.assignments.map(a=>{
@@ -953,12 +1009,13 @@ function renderClasswork(c){
 }
 
 function renderPeople(c){
+  const teacher = isTeacher(c);
   return `
     <div style="display:flex; justify-content:flex-end; margin-bottom:14px;">
-      <button class="btn btn-ghost" data-modal="newStudent" data-preset-class="${c.id}">+ Add student</button>
+      ${teacher? `<button class="btn btn-ghost" data-modal="newStudent" data-preset-class="${c.id}">+ Add student</button>` : ''}
     </div>
     <table class="roster">
-      <thead><tr><th>Name</th><th>Email</th><th>Average</th></tr></thead>
+      <thead><tr><th>Name</th><th>Email</th>${teacher? '<th>Average</th>' : ''}</tr></thead>
       <tbody>
       ${c.students.map(st=>{
         const g = c.grades[st.id]||{};
@@ -967,8 +1024,8 @@ function renderPeople(c){
         const avg = poss? Math.round(earned/poss*100) : null;
         return `<tr>
           <td><div class="stud-name"><div class="mini-avatar">${initials(st.name)}</div>${st.name}</div></td>
-          <td class="mono" style="color:#7b8a80;">${st.name.toLowerCase().replace(/[^a-z]/g,'.')}@school.edu</td>
-          <td class="avg-cell">${avg!=null? avg+'%' : '—'}</td>
+          <td class="mono" style="color:#7b8a80;">${st.email || (st.name.toLowerCase().replace(/[^a-z]/g,'.')+'@school.edu')}</td>
+          ${teacher? `<td class="avg-cell">${avg!=null? avg+'%' : '—'}</td>` : ''}
         </tr>`;
       }).join('')}
       </tbody>
@@ -977,6 +1034,34 @@ function renderPeople(c){
 }
 
 function renderGrades(c){
+  const teacher = isTeacher(c);
+  if(!teacher){
+    const st = c.students.find(s=>s.id===state.user.uid);
+    const g = st ? (c.grades[st.id]||{}) : {};
+    let earned=0, poss=0;
+    c.assignments.forEach(a=>{ if(g[a.id]!=null){ earned+=Number(g[a.id]); poss+=a.points; } });
+    const avg = poss? Math.round(earned/poss*100) : null;
+    return `
+      <div class="gradebook-wrap">
+        <table class="gradebook">
+          <thead><tr><th>Assignment</th><th>Points</th><th>Your score</th></tr></thead>
+          <tbody>
+          ${c.assignments.length? c.assignments.map(a=>{
+            const val = g[a.id];
+            return `<tr>
+              <td>${a.title}</td>
+              <td>${a.points}</td>
+              <td class="avg-cell">${val!=null? val+' / '+a.points : '—'}</td>
+            </tr>`;
+          }).join('') : `<tr><td colspan="3" style="text-align:center;color:#7b8a80;">No assignments yet</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:14px; font-size:13.5px; color:var(--ink-2);">
+        Overall average: <b class="avg-cell">${avg!=null? avg+'%' : '—'}</b>
+      </div>
+    `;
+  }
   return `
     <div class="gradebook-wrap">
       <table class="gradebook">
@@ -1011,6 +1096,8 @@ function renderGrades(c){
 function openModal(type, preset){
   const overlay = document.getElementById('overlay');
   const body = document.getElementById('modalBody');
+  const teacherClasses = db.classes.filter(isTeacher);
+
   if(type==='newClass'){
     body.innerHTML = `
       <div class="modal-head"><h3>Create a class</h3><button class="modal-close" data-close>&times;</button></div>
@@ -1032,41 +1119,71 @@ function openModal(type, preset){
       </div>
     `;
   }
+
+  if(type==='joinClass'){
+    body.innerHTML = `
+      <div class="modal-head"><h3>Join a class</h3><button class="modal-close" data-close>&times;</button></div>
+      <div class="modal-body">
+        <div class="field">
+          <label>Class code</label>
+          <input id="mJoinCode" type="text" placeholder="e.g. 7F3K9Q" style="text-transform:uppercase; letter-spacing:.1em;" />
+        </div>
+        <div class="field-note">Ask your teacher for the 6-character class code shown on their class page.</div>
+        <div id="joinError" class="field-error"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-close>Cancel</button>
+        <button class="btn btn-primary" data-save="joinClass">Join</button>
+      </div>
+    `;
+  }
+
   if(type==='newAssignment'){
     body.innerHTML = `
       <div class="modal-head"><h3>Create assignment</h3><button class="modal-close" data-close>&times;</button></div>
       <div class="modal-body">
+        ${teacherClasses.length===0 ? `
+          <div class="field-note">You need to create a class (and be its teacher) before adding assignments.</div>
+        ` : `
         <div class="field"><label>Title</label><input id="mTitle" type="text" placeholder="e.g. Essay Draft" /></div>
         <div class="field"><label>Class</label>
-          <select id="mClass">${db.classes.map(c=>`<option value="${c.id}" ${preset===c.id?'selected':''}>${c.name}</option>`).join('')}</select>
+          <select id="mClass">${teacherClasses.map(c=>`<option value="${c.id}" ${preset===c.id?'selected':''}>${c.name}</option>`).join('')}</select>
         </div>
         <div class="row-2">
           <div class="field"><label>Due date</label><input id="mDue" type="date" value="${state.todayISO}" /></div>
           <div class="field"><label>Points</label><input id="mPoints" type="number" value="100" min="0" /></div>
         </div>
         <div class="field"><label>Instructions</label><textarea id="mDesc" placeholder="Assignment details for students..."></textarea></div>
+        `}
       </div>
       <div class="modal-foot">
         <button class="btn btn-ghost" data-close>Cancel</button>
-        <button class="btn btn-primary" data-save="newAssignment">Assign</button>
+        ${teacherClasses.length>0 ? `<button class="btn btn-primary" data-save="newAssignment">Assign</button>` : ''}
       </div>
     `;
   }
+
   if(type==='newStudent'){
     body.innerHTML = `
       <div class="modal-head"><h3>Add student</h3><button class="modal-close" data-close>&times;</button></div>
       <div class="modal-body">
+        ${teacherClasses.length===0 ? `
+          <div class="field-note">You need to create a class (and be its teacher) before adding students.</div>
+        ` : `
         <div class="field"><label>Full name</label><input id="mStudentName" type="text" placeholder="e.g. Jordan Lee" /></div>
         <div class="field"><label>Class</label>
-          <select id="mStudentClass">${db.classes.map(c=>`<option value="${c.id}" ${preset===c.id?'selected':''}>${c.name}</option>`).join('')}</select>
+          <select id="mStudentClass">${teacherClasses.map(c=>`<option value="${c.id}" ${preset===c.id?'selected':''}>${c.name}</option>`).join('')}</select>
         </div>
+        <div class="field-note">This adds a roster-only entry. To let a student see grades themselves, share the class join code with them instead.</div>
+        `}
       </div>
       <div class="modal-foot">
         <button class="btn btn-ghost" data-close>Cancel</button>
-        <button class="btn btn-primary" data-save="newStudent">Add student</button>
+        ${teacherClasses.length>0 ? `<button class="btn btn-primary" data-save="newStudent">Add student</button>` : ''}
       </div>
     `;
   }
+
   overlay.classList.add('show');
   overlay.dataset.selectedColor = COLORS[0];
 }
@@ -1089,40 +1206,43 @@ function bindGlobalEvents(){
     el.addEventListener('click', ()=> openModal(el.dataset.modal, el.dataset.presetClass));
   });
   document.querySelectorAll('[data-signout]').forEach(el=>{
-    el.addEventListener('click', signOut);
+    el.addEventListener('click', signOutUser);
+  });
+  document.querySelectorAll('[data-copy-code]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      const code = el.dataset.copyCode;
+      try{
+        await navigator.clipboard.writeText(code);
+        const original = el.textContent;
+        el.textContent = 'Copied!';
+        setTimeout(()=>{ el.textContent = original; }, 1200);
+      }catch(e){ console.error('Copy failed', e); }
+    });
   });
   document.querySelectorAll('[data-post-announcement]').forEach(el=>{
-    el.addEventListener('click', ()=>{
+    el.addEventListener('click', async ()=>{
       const cid = el.dataset.postAnnouncement;
       const input = document.getElementById('streamInput');
       const text = input.value.trim();
       if(!text) return;
-      const c = getClass(cid);
-      c.stream.unshift({id:uid('p'), author: state.user?.name || 'You', time:'Just now', text});
-      render();
-      scheduleSave();
+      input.value = '';
+      try{ await postAnnouncementFn(cid, text); }catch(e){ console.error(e); }
     });
   });
   document.querySelectorAll('[data-grade-cell]').forEach(el=>{
-    el.addEventListener('change', ()=>{
-      const c = getClass(el.dataset.class);
-      const sid = el.dataset.student, aid = el.dataset.assignment;
-      c.grades[sid] = c.grades[sid] || {};
+    el.addEventListener('change', async ()=>{
+      const cid = el.dataset.class, sid = el.dataset.student, aid = el.dataset.assignment;
       const val = el.value === '' ? null : Number(el.value);
-      if(val===null) delete c.grades[sid][aid]; else c.grades[sid][aid] = val;
-      render();
-      scheduleSave();
+      try{ await updateGradeFn(cid, sid, aid, val); }catch(e){ console.error(e); }
     });
   });
 
-  // overlay-level handlers (attached once effectively, safe to rebind)
   const overlay = document.getElementById('overlay');
   overlay.onclick = (e)=>{ if(e.target===overlay) closeModal(); };
-  overlay.querySelectorAll?.('[data-close]');
 }
 
-// Delegated events for modal (since modal content re-renders independently)
-document.addEventListener('click', (e)=>{
+// Delegated events for modal (modal content re-renders independently of the main app)
+document.addEventListener('click', async (e)=>{
   if(e.target.matches('[data-close]')) closeModal();
 
   if(e.target.matches('[data-swatch]')){
@@ -1137,43 +1257,57 @@ document.addEventListener('click', (e)=>{
     const section = document.getElementById('mSection').value.trim() || 'Section 1';
     const room = document.getElementById('mRoom').value.trim() || 'TBD';
     const color = document.getElementById('overlay').dataset.selectedColor || COLORS[0];
-    const newC = {id:uid('c'), name, section, room, color, students:[], assignments:[], grades:{}, stream:[]};
-    db.classes.push(newC);
-    closeModal();
-    state.view='class'; state.activeClassId = newC.id; state.classTab='stream';
-    render();
-    scheduleSave();
+    try{
+      const newId = await createClassFn(name, section, room, color);
+      closeModal();
+      state.view='class'; state.activeClassId = newId; state.classTab='stream';
+      render();
+    }catch(err){ console.error('Create class failed', err); }
+  }
+
+  if(e.target.matches('[data-save="joinClass"]')){
+    const codeInput = document.getElementById('mJoinCode');
+    const errEl = document.getElementById('joinError');
+    const res = await joinClassByCode(codeInput.value);
+    if(res.ok){
+      closeModal();
+      state.view='class'; state.activeClassId = res.classId; state.classTab='stream';
+      render();
+    }else{
+      errEl.style.display='block';
+      errEl.textContent = res.msg;
+    }
   }
 
   if(e.target.matches('[data-save="newAssignment"]')){
-    const title = document.getElementById('mTitle').value.trim();
+    const titleEl = document.getElementById('mTitle');
+    if(!titleEl) return;
+    const title = titleEl.value.trim();
     const cid = document.getElementById('mClass').value;
     const due = document.getElementById('mDue').value || state.todayISO;
     const points = Number(document.getElementById('mPoints').value) || 100;
     const desc = document.getElementById('mDesc').value.trim();
     if(!title || !cid) return;
-    const c = getClass(cid);
-    c.assignments.push({id:uid('a'), title, due, points, desc});
-    closeModal();
-    render();
-    scheduleSave();
+    try{
+      await addAssignmentFn(cid, { title, due, points, desc });
+      closeModal();
+      render();
+    }catch(err){ console.error('Add assignment failed', err); }
   }
 
   if(e.target.matches('[data-save="newStudent"]')){
-    const name = document.getElementById('mStudentName').value.trim();
+    const nameEl = document.getElementById('mStudentName');
+    if(!nameEl) return;
+    const name = nameEl.value.trim();
     const cid = document.getElementById('mStudentClass').value;
     if(!name || !cid) return;
-    const c = getClass(cid);
-    c.students.push({id:uid('s'), name});
-    closeModal();
-    render();
-    scheduleSave();
+    try{
+      await addStudentFn(cid, name);
+      closeModal();
+      render();
+    }catch(err){ console.error('Add student failed', err); }
   }
 });
-
-/* ---------------- Init ----------------
-   Rendering starts only after a successful Google sign-in
-   (see handleCredentialResponse), so nothing is called here. */
 </script>
 </body>
 </html>
