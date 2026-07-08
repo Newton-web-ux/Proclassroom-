@@ -593,6 +593,20 @@ async function updateGradeFn(classId, studentId, assignmentId, val){
 }
 
 /* ---------------- Auth ---------------- */
+function friendlyAuthError(e){
+  const code = e?.code || 'unknown';
+  const map = {
+    'auth/unauthorized-domain': `This domain isn't authorized. In Firebase Console → Authentication → Settings → Authorized domains, add: ${location.hostname}`,
+    'auth/popup-blocked': 'Your browser blocked the sign-in popup. Allow popups for this site and try again.',
+    'auth/popup-closed-by-user': 'The sign-in popup was closed before completing.',
+    'auth/cancelled-popup-request': 'Sign-in was cancelled (another popup was already open).',
+    'auth/operation-not-allowed': 'Google sign-in isn\'t enabled for this Firebase project. In Firebase Console → Authentication → Sign-in method, enable Google.',
+    'auth/network-request-failed': 'Network error reaching Firebase — check your connection.',
+    'auth/internal-error': 'Firebase internal error — check that your API key / project config is correct.',
+  };
+  return `${map[code] || e?.message || 'Sign-in failed.'} (${code})`;
+}
+
 function handleGoogleSignIn(){
   const btn = document.getElementById('googleBtn');
   const err = document.getElementById('loginError');
@@ -600,7 +614,7 @@ function handleGoogleSignIn(){
   if(btn){ btn.disabled = true; btn.textContent = 'Signing in…'; }
   signInWithPopup(auth, provider).catch(e=>{
     console.error('Sign-in failed', e);
-    if(err){ err.style.display='block'; err.textContent = 'Sign-in failed — please try again.'; }
+    if(err){ err.style.display='block'; err.textContent = friendlyAuthError(e); }
   }).finally(()=>{
     if(btn){ btn.disabled = false; btn.textContent = 'Sign in with Google'; }
   });
