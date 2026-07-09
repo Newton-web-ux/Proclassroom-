@@ -457,6 +457,33 @@
 <div class="overlay" id="overlay">
   <div class="modal" id="modalBody"></div>
 </div>
+<!-- Whiteboard Button -->
+<button id="openWhiteboardBtn" class="btn btn-primary">🖍 Whiteboard</button>
+
+<!-- Whiteboard Modal -->
+<div id="whiteboardModal" class="overlay">
+  <div class="modal" style="max-width:1100px;">
+    <div class="modal-head">
+      <h3>Class Whiteboard</h3>
+      <button id="closeWhiteboardBtn" class="modal-close">✕</button>
+    </div>
+
+    <div class="modal-body" style="gap:12px;">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+        <input type="color" id="wbColor" value="#000000" style="width:42px;height:36px;border:none;background:transparent;">
+        <input type="range" id="wbSize" min="1" max="24" value="3">
+        <button id="wbPenBtn" class="btn btn-ghost">Pen</button>
+        <button id="wbEraserBtn" class="btn btn-ghost">Eraser</button>
+        <button id="wbUndoBtn" class="btn btn-ghost">Undo</button>
+        <button id="wbClearBtn" class="btn btn-ghost">Clear</button>
+        <button id="wbSaveBtn" class="btn btn-primary">Save</button>
+      </div>
+
+      <canvas id="whiteboardCanvas" width="1200" height="700"
+        style="width:100%;height:70vh;border:1px solid rgba(0,0,0,.12);border-radius:10px;background:#fff;touch-action:none;"></canvas>
+    </div>
+  </div>
+</div>
 
 <script type="module">
 /* =========================================================
@@ -1512,6 +1539,151 @@ document.addEventListener('click', async (e)=>{
       render();
     }catch(err){ console.error('Add student failed', err); }
   }
+});
+</script>
+<script>
+const openWhiteboardBtn = document.getElementById('openWhiteboardBtn');
+const closeWhiteboardBtn = document.getElementById('closeWhiteboardBtn');
+const whiteboardModal = document.getElementById('whiteboardModal');
+const canvas = document.getElementById('whiteboardCanvas');
+const ctx = canvas.getContext('2d');
+
+const wbColor = document.getElementById('wbColor');
+const wbSize = document.getElementById('wbSize');
+const wbPenBtn = document.getElementById('wbPenBtn');
+const wbEraserBtn = document.getElementById('wbEraserBtn');
+const wbUndoBtn = document.getElementById('wbUndoBtn');
+const wbClearBtn = document.getElementById('wbClearBtn');
+const wbSaveBtn = document.getElementById('wbSaveBtn');
+
+let drawing = false;
+let mode = 'pen';
+let strokes = [];
+let currentStroke = null;
+
+function resizeCanvasToCSS() {
+  const rect = canvas.getBoundingClientRect();
+  const temp = document.createElement('canvas');
+  temp.width = canvas.width;
+  temp.height = canvas.height;
+  temp.getContext('2d').drawImage(canvas, 0, 0);
+
+  canvas.width = Math.max(1, Math.floor(rect.width * devicePixelRatio));
+  canvas.height = Math.max(1, Math.floor(rect.height * devicePixelRatio));
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  redrawAll(temp);
+}
+
+function redrawAll(tempCanvas = null) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (tempCanvas) ctx.drawImage(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height, 0, 0, canvas.width, canvas.height);
+  for (const s of strokes) drawStroke(s);
+}
+
+function drawStroke(s) {
+  if (!s.points.length) return;
+  ctx.save();
+  ctx.globalCompositeOperation = s.mode === 'erase' ? 'destination-out' : 'source-over';
+  ctx.strokeStyle = s.color;
+  ctx.lineWidth = s.size;
+  ctx.beginPath();
+  ctx.moveTo(s.points[0].x, s.points[0].y);
+  for (let i = 1; i < s.points.length; i++) ctx.lineTo(s.points[i].x, s.points[i].y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function getPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - rect.left),
+    y: (e.clientY - rect.top)
+  };
+}
+
+function startDraw(e) {
+  drawing = true;
+  const p = getPos(e);
+  currentStroke = {
+    id: crypto.randomUUID(),
+    mode,
+    color: wbColor.value,
+    size: Number(wbSize.value),
+    points: [p]
+  };
+  strokes.push(currentStroke);
+}
+
+function moveDraw(e) {
+  if (!drawing || !currentStroke) return;
+  const p = getPos(e);
+  currentStroke.points.push(p);
+  drawStroke(currentStroke);
+}
+
+function endDraw() {
+  drawing = false;
+  currentStroke = null;
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  canvas.setPointerCapture(e.pointerId);
+  startDraw(e);
+});
+canvas.addEventListener('pointermove', moveDraw);
+canvas.addEventListener('pointerup', endDraw);
+canvas.addEventListener('pointercancel', endDraw);
+
+wbPenBtn.onclick = () => (mode = 'pen');
+wbEraserBtn.onclick = () => (mode = 'erase');
+
+wbUndoBtn.onclick = () => {
+  strokes.pop();
+  redrawAll();
+};
+
+wbClearBtn.onclick = () => {
+  strokes = [];
+  redrawAll();
+};
+
+openWhiteboardBtn.onclick = () => {
+  whiteboardModal.classList.add('show');
+  setTimeout(() => resizeCanvasToCSS(), 0);
+};
+
+closeWhiteboardBtn.onclick = () => {
+  whiteboardModal.classList.remove('show');
+};
+
+wbSaveBtn.onclick = async () => {
+  canvas.toBlob(async (blob) => {
+    if (!blob) return;
+
+    // upload to Firebase Storage
+    const filePath = `whiteboards/${classId}/${Date.now()}.png`;
+    const uploadRef = firebase.storage().ref().child(filePath);
+    const snap = await uploadRef.put(blob, { contentType: 'image/png' });
+    const url = await snap.ref.getDownloadURL();
+
+    // save into class stream
+    await firebase.firestore()
+      .collection('classes')
+      .doc(classId)
+      .collection('stream')
+      .add({
+        type: 'whiteboard',
+        url,
+        ownerId: firebase.auth().currentUser.uid,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+  }, 'image/png');
+};
+
+window.addEventListener('resize', () => {
+  if (whiteboardModal.classList.contains('show')) resizeCanvasToCSS();
 });
 </script>
 </body>
