@@ -303,7 +303,19 @@
     display:inline-flex; align-items:center; gap:4px;
   }
   .work-card .wc-attach-chip:hover{ border-color:var(--line-strong); }
-  .work-card .wc-foot{ display:flex; align-items:center; justify-content:space-between; margin-top:12px; }
+  .work-card .wc-foot{ display:flex; align-items:center; justify-content:space-between; margin-top:12px; gap:8px; }
+  .wc-submissions{ margin-top:10px; }
+  .wc-submissions summary{
+    cursor:pointer; font-size:12px; font-weight:700; color:var(--ink);
+    list-style:none; display:flex; align-items:center; gap:6px;
+  }
+  .wc-submissions summary::-webkit-details-marker{ display:none; }
+  .wc-submissions summary::before{ content:'▸'; color:#7b8a80; font-size:10px; }
+  .wc-submissions[open] summary::before{ content:'▾'; }
+  .wc-sub-list{ margin-top:8px; display:flex; flex-direction:column; gap:10px; }
+  .wc-sub-item{ background:var(--parchment); border-radius:8px; padding:9px 10px; }
+  .wc-sub-name{ font-size:12.5px; font-weight:700; color:var(--ink-2); margin-bottom:6px; }
+  .wc-sub-note{ font-size:12px; color:#5b6b60; margin-top:6px; font-style:italic; }
 
   table.roster{ width:100%; border-collapse:collapse; }
   table.roster th{
@@ -516,7 +528,8 @@ function docToClass(docSnap){
     students: d.students || [],
     assignments: d.assignments || [],
     grades: d.grades || {},
-    stream: d.stream || []
+    stream: d.stream || [],
+    submissions: d.submissions || {}
   };
 }
 
@@ -606,6 +619,19 @@ async function encodeAttachments(files){
 async function addAssignmentFn(classId, a){
   await updateDoc(doc(dbFire,'classes',classId), {
     assignments: arrayUnion({ id: uid('a'), title:a.title, due:a.due, points:a.points, desc:a.desc || '', attachments: a.attachments || [] })
+  });
+}
+
+async function submitAssignmentFn(classId, assignmentId, files, note){
+  const attachments = files && files.length ? await encodeAttachments(files) : [];
+  const fieldPath = `submissions.${assignmentId}.${state.user.uid}`;
+  await updateDoc(doc(dbFire,'classes',classId), {
+    [fieldPath]: {
+      studentName: state.user.name,
+      files: attachments,
+      note: note || '',
+      submittedAt: new Date().toISOString()
+    }
   });
 }
 
@@ -1049,6 +1075,9 @@ function renderClasswork(c){
       ${c.assignments.length? c.assignments.map(a=>{
         const st = statusPill(a.due); const dt = fmtDate(a.due);
         const atts = a.attachments || [];
+        const subsForA = (c.submissions && c.submissions[a.id]) || {};
+        const mySub = !teacher ? (subsForA[state.user.uid] || null) : null;
+        const subCount = Object.keys(subsForA).length;
         return `<div class="work-card">
           <div class="wc-icon">&#128221;</div>
           <h4>${a.title}</h4>
@@ -1064,7 +1093,34 @@ function renderClasswork(c){
           ` : ''}
           <div class="wc-foot">
             <span class="pill ${st.cls}">${st.text}</span>
+            ${mySub ? `<span class="pill pill-ok">Submitted</span>` : ''}
           </div>
+          ${!teacher ? `
+            <button class="btn btn-ghost" data-modal="submitWork" data-preset-class="${c.id}" data-preset-assignment="${a.id}" style="width:100%; justify-content:center; margin-top:10px;">
+              ${mySub? 'View / resubmit' : 'Submit work'}
+            </button>
+          ` : `
+            <details class="wc-submissions">
+              <summary>${subCount}/${c.students.length} submitted</summary>
+              <div class="wc-sub-list">
+                ${subCount? Object.entries(subsForA).map(([sid,sub])=>{
+                  const student = c.students.find(s=>s.id===sid);
+                  return `<div class="wc-sub-item">
+                    <div class="wc-sub-name">${student? student.name : sub.studentName}</div>
+                    ${sub.files && sub.files.length? `
+                      <div class="wc-attachments">
+                        ${sub.files.map(f=> isImageType(f.type)
+                          ? `<a href="${f.url}" target="_blank" rel="noopener" class="wc-attach-thumb" title="${f.name}"><img src="${f.url}" alt="${f.name}" /></a>`
+                          : `<a href="${f.url}" target="_blank" rel="noopener" class="wc-attach-chip" title="${f.name}">&#128206; ${f.name.length>18? f.name.slice(0,18)+'…':f.name}</a>`
+                        ).join('')}
+                      </div>
+                    ` : ''}
+                    ${sub.note? `<div class="wc-sub-note">"${sub.note}"</div>` : ''}
+                  </div>`;
+                }).join('') : `<div class="field-note">No submissions yet.</div>`}
+              </div>
+            </details>
+          `}
         </div>`;
       }).join('') : `<div class="empty-state"><h4>No classwork posted</h4></div>`}
     </div>
@@ -1156,7 +1212,7 @@ function renderGrades(c){
 }
 
 /* ---------------- Modals ---------------- */
-function openModal(type, preset){
+function openModal(type, preset, presetAssignment){
   const overlay = document.getElementById('overlay');
   const body = document.getElementById('modalBody');
   const teacherClasses = db.classes.filter(isTeacher);
@@ -1199,6 +1255,42 @@ function openModal(type, preset){
         <button class="btn btn-primary" data-save="joinClass">Join</button>
       </div>
     `;
+  }
+
+  if(type==='submitWork'){
+    const c = getClass(preset);
+    const a = c ? c.assignments.find(x=>x.id===presetAssignment) : null;
+    const mySub = (c && a && c.submissions && c.submissions[a.id]) ? c.submissions[a.id][state.user.uid] : null;
+    if(!c || !a){
+      body.innerHTML = `<div class="modal-head"><h3>Submit work</h3><button class="modal-close" data-close>&times;</button></div><div class="modal-body"><div class="field-note">Assignment not found.</div></div><div class="modal-foot"><button class="btn btn-ghost" data-close>Close</button></div>`;
+    }else{
+      body.innerHTML = `
+        <div class="modal-head"><h3>Submit: ${a.title}</h3><button class="modal-close" data-close>&times;</button></div>
+        <div class="modal-body">
+          ${mySub ? `
+            <div class="field-note">You submitted ${mySub.files.length} file(s) on ${new Date(mySub.submittedAt).toLocaleString()}. Uploading again will replace this submission.</div>
+            ${mySub.files.length? `
+              <div class="wc-attachments">
+                ${mySub.files.map(f=> isImageType(f.type)
+                  ? `<a href="${f.url}" target="_blank" rel="noopener" class="wc-attach-thumb" title="${f.name}"><img src="${f.url}" alt="${f.name}" /></a>`
+                  : `<a href="${f.url}" target="_blank" rel="noopener" class="wc-attach-chip" title="${f.name}">&#128206; ${f.name}</a>`
+                ).join('')}
+              </div>
+            ` : ''}
+          ` : ''}
+          <div class="field">
+            <label>Upload your answer (PDF, PNG, or Word doc)</label>
+            <input id="mSubmitFiles" type="file" multiple accept="application/pdf,.pdf,image/png,.png,.doc,.docx" />
+            <div class="field-note" style="margin-top:6px;">Each file must be under 700KB.</div>
+          </div>
+          <div class="field"><label>Note to teacher (optional)</label><textarea id="mSubmitNote" placeholder="Anything you'd like your teacher to know...">${mySub && mySub.note ? mySub.note : ''}</textarea></div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-ghost" data-close>Cancel</button>
+          <button class="btn btn-primary" data-save="submitWork" data-class="${c.id}" data-assignment="${a.id}">${mySub? 'Resubmit' : 'Submit'}</button>
+        </div>
+      `;
+    }
   }
 
   if(type==='newAssignment'){
@@ -1271,7 +1363,7 @@ function bindGlobalEvents(){
     el.addEventListener('click', ()=>{ state.classTab = el.dataset.classtab; render(); });
   });
   document.querySelectorAll('[data-modal]').forEach(el=>{
-    el.addEventListener('click', ()=> openModal(el.dataset.modal, el.dataset.presetClass));
+    el.addEventListener('click', ()=> openModal(el.dataset.modal, el.dataset.presetClass, el.dataset.presetAssignment));
   });
   document.querySelectorAll('[data-signout]').forEach(el=>{
     el.addEventListener('click', signOutUser);
@@ -1375,6 +1467,34 @@ document.addEventListener('click', async (e)=>{
       console.error('Add assignment failed', err);
       const noteEl = document.querySelector('#modalBody .field-note');
       if(noteEl){ noteEl.style.color = 'var(--red-pen)'; noteEl.textContent = err.message || 'Could not save assignment.'; }
+      saveBtn.disabled = false;
+      saveBtn.textContent = originalLabel;
+    }
+  }
+
+  if(e.target.matches('[data-save="submitWork"]')){
+    const cid = e.target.dataset.class, aid = e.target.dataset.assignment;
+    const fileInput = document.getElementById('mSubmitFiles');
+    const files = (fileInput && fileInput.files) ? Array.from(fileInput.files) : [];
+    const note = document.getElementById('mSubmitNote').value.trim();
+    const errNoteSelector = '#modalBody .field-note';
+    if(files.length===0 && !note){
+      const noteEl = document.querySelector(errNoteSelector);
+      if(noteEl){ noteEl.style.color = 'var(--red-pen)'; noteEl.textContent = 'Attach at least one file or add a note before submitting.'; }
+      return;
+    }
+    const saveBtn = e.target;
+    const originalLabel = saveBtn.textContent;
+    saveBtn.disabled = true;
+    try{
+      if(files.length){ saveBtn.textContent = 'Encoding files…'; }
+      await submitAssignmentFn(cid, aid, files, note);
+      closeModal();
+      render();
+    }catch(err){
+      console.error('Submit failed', err);
+      const noteEl = document.querySelector(errNoteSelector);
+      if(noteEl){ noteEl.style.color = 'var(--red-pen)'; noteEl.textContent = err.message || 'Could not submit.'; }
       saveBtn.disabled = false;
       saveBtn.textContent = originalLabel;
     }
