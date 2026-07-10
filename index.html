@@ -1298,40 +1298,22 @@ function openModal(type, preset, presetAssignment){
       <div class="modal-head"><h3>Create assignment</h3><button class="modal-close" data-close>&times;</button></div>
       <div class="modal-body">
         ${teacherClasses.length===0 ? `
-         <div class="field">
-
-    <label>Attach files or images (optional)</label>
-
-    <input
-        id="mAttachments"
-        type="file"
-        multiple
-        accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip"
-        style="display:none;"
-    >
-
-    <button
-        type="button"
-        id="attachBtn"
-        class="btn btn-ghost">
-        📎 Attach Files
-    </button>
-
-    <div
-        id="attachmentPreview"
-        style="
-            margin-top:12px;
-            display:flex;
-            flex-direction:column;
-            gap:10px;
-        ">
-    </div>
-
-    <div class="field-note" style="margin-top:6px;">
-        Each attachment must be under 700KB.
-    </div>
-
-</div>
+          <div class="field-note">You need to create a class (and be its teacher) before adding assignments.</div>
+        ` : `
+        <div class="field"><label>Title</label><input id="mTitle" type="text" placeholder="e.g. Essay Draft" /></div>
+        <div class="field"><label>Class</label>
+          <select id="mClass">${teacherClasses.map(c=>`<option value="${c.id}" ${preset===c.id?'selected':''}>${c.name}</option>`).join('')}</select>
+        </div>
+        <div class="row-2">
+          <div class="field"><label>Due date</label><input id="mDue" type="date" value="${state.todayISO}" /></div>
+          <div class="field"><label>Points</label><input id="mPoints" type="number" value="100" min="0" /></div>
+        </div>
+        <div class="field"><label>Instructions</label><textarea id="mDesc" placeholder="Assignment details for students..."></textarea></div>
+        <div class="field">
+          <label>Attach files or images (optional)</label>
+          <input id="mAttachments" type="file" multiple accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip" />
+          <div class="field-note" style="margin-top:6px;">Each file must be under 700KB (stored directly in the class record).</div>
+        </div>
         `}
       </div>
       <div class="modal-foot">
@@ -1365,116 +1347,7 @@ function openModal(type, preset, presetAssignment){
   overlay.classList.add('show');
   overlay.dataset.selectedColor = COLORS[0];
 }
-function closeModal(){
-
-    selectedAssignmentFiles = [];
-
-    document.getElementById('overlay').classList.remove('show');
-
-}
-// ===============================
-// Assignment Attachment Preview
-// ===============================
-
-let selectedAssignmentFiles = [];
-
-document.addEventListener("click", function(e){
-
-    if(e.target.id === "attachBtn"){
-        document.getElementById("mAttachments").click();
-    }
-
-});
-
-document.addEventListener("change", function(e){
-
-    if(e.target.id !== "mAttachments") return;
-
-    selectedAssignmentFiles = [
-        ...selectedAssignmentFiles,
-        ...Array.from(e.target.files)
-    ];
-
-    renderAttachmentPreview();
-
-    e.target.value = "";
-
-});
-
-function renderAttachmentPreview(){
-
-    const preview = document.getElementById("attachmentPreview");
-
-    if(!preview) return;
-
-    preview.innerHTML = "";
-
-    selectedAssignmentFiles.forEach((file,index)=>{
-
-        const row = document.createElement("div");
-
-        row.style.display = "flex";
-        row.style.alignItems = "center";
-        row.style.justifyContent = "space-between";
-        row.style.padding = "8px";
-        row.style.border = "1px solid #ddd";
-        row.style.borderRadius = "8px";
-        row.style.marginBottom = "8px";
-        row.style.background = "#fafafa";
-
-        let left = document.createElement("div");
-
-        if(file.type.startsWith("image/")){
-
-            left.innerHTML = `
-                <img
-                    src="${URL.createObjectURL(file)}"
-                    style="
-                        width:50px;
-                        height:50px;
-                        object-fit:cover;
-                        border-radius:6px;
-                        margin-right:10px;
-                    ">
-                <span>${file.name}</span>
-            `;
-
-            left.style.display = "flex";
-            left.style.alignItems = "center";
-
-        }else{
-
-            left.innerHTML = `
-                📄 ${file.name}
-            `;
-
-        }
-
-        const del = document.createElement("button");
-
-        del.type = "button";
-
-        del.textContent = "❌";
-
-        del.className = "btn btn-danger";
-
-        del.onclick = ()=>{
-
-            selectedAssignmentFiles.splice(index,1);
-
-            renderAttachmentPreview();
-
-        };
-
-        row.appendChild(left);
-
-        row.appendChild(del);
-
-        preview.appendChild(row);
-
-    });
-
-}
+function closeModal(){ document.getElementById('overlay').classList.remove('show'); }
 
 /* ---------------- Events ---------------- */
 function bindGlobalEvents(){
@@ -1587,19 +1460,9 @@ document.addEventListener('click', async (e)=>{
         attachments = await encodeAttachments(files);
       }
       saveBtn.textContent = 'Saving…';
-   await addAssignmentFn(cid, {
-    title,
-    due,
-    points,
-    desc,
-    attachments
-});
-
-selectedAssignmentFiles = [];
-
-closeModal();
-
-render();
+      await addAssignmentFn(cid, { title, due, points, desc, attachments });
+      closeModal();
+      render();
     }catch(err){
       console.error('Add assignment failed', err);
       const noteEl = document.querySelector('#modalBody .field-note');
@@ -1611,7 +1474,8 @@ render();
 
   if(e.target.matches('[data-save="submitWork"]')){
     const cid = e.target.dataset.class, aid = e.target.dataset.assignment;
-    const files = [...selectedAssignmentFiles];
+    const fileInput = document.getElementById('mSubmitFiles');
+    const files = (fileInput && fileInput.files) ? Array.from(fileInput.files) : [];
     const note = document.getElementById('mSubmitNote').value.trim();
     const errNoteSelector = '#modalBody .field-note';
     if(files.length===0 && !note){
