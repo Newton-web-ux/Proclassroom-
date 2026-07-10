@@ -359,6 +359,25 @@
   .wb-live-badge{ font-size:10.5px; font-weight:700; color:#2A6B3E; display:inline-flex; align-items:center; gap:5px; }
   .wb-live-badge::before{ content:''; width:7px;height:7px;border-radius:50%; background:#2A6B3E; }
   .wb-viewer-note{ display:flex; align-items:center; justify-content:space-between; padding:10px 16px; font-size:12.5px; color:#5b6b60; border-bottom:1px solid var(--line); background:var(--parchment); }
+  .wb-tool-btn:disabled{ opacity:.4; cursor:default; }
+  .wb-tool-btn:disabled:hover{ background:var(--paper); }
+  .wb-pages-bar{ display:flex; align-items:center; padding:10px 16px; border-bottom:1px solid var(--line); background:var(--parchment); overflow-x:auto; }
+  .wb-page-tabs{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .wb-page-tab{
+    display:inline-flex; align-items:center; gap:7px;
+    padding:6px 10px; border-radius:7px; border:1px solid var(--line-strong);
+    background:var(--paper); font-size:12.5px; font-weight:600; color:var(--ink-2);
+    white-space:nowrap;
+  }
+  .wb-page-tab.active{ background:var(--ink); color:var(--chalk); border-color:var(--ink); }
+  .wb-page-del{ font-size:13px; line-height:1; opacity:.55; padding:0 1px; border-radius:4px; }
+  .wb-page-tab.active .wb-page-del{ opacity:.85; }
+  .wb-page-del:hover{ opacity:1; }
+  .wb-page-add{
+    width:26px; height:26px; border-radius:7px; border:1px dashed var(--line-strong);
+    background:transparent; color:#5b6b60; font-size:15px; font-weight:700; flex-shrink:0; margin-left:6px;
+  }
+  .wb-page-add:hover{ background:var(--paper); color:var(--ink); }
   .wb-canvas-wrap{ padding:14px; background:#fff; }
   .wb-canvas-wrap canvas{ width:100%; height:auto; display:block; border-radius:8px; border:1px solid var(--line); background:#fff; touch-action:none; cursor:crosshair; }
 
@@ -490,7 +509,8 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
   getFirestore, collection, addDoc, doc, updateDoc, onSnapshot,
-  query, where, arrayUnion, deleteField, serverTimestamp, getDocs
+  query, where, orderBy, arrayUnion, deleteField, deleteDoc, writeBatch,
+  serverTimestamp, getDocs
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 /* ---------------- Firebase config ---------------- */
@@ -511,7 +531,6 @@ const provider = new GoogleAuthProvider();
 /* ---------------- App state ---------------- */
 const COLORS = ['#2C4A3B','#7A4B2E','#3C5A78','#7A3B4A','#4B4A78','#5C6B2C'];
 const WB_COLORS = ['#1F3A2E','#A6373B','#3C5A78','#C68E17','#4B4A78','#16281F'];
-const MAX_STROKES = 400;
 const WB_PUSH_INTERVAL_MS = 150;
 const WB_MIN_POINT_DIST = 2.5;
 
@@ -546,6 +565,22 @@ let wbCurrentPoints = [];
 let wbCurrentId = null;
 let wbLastPushTime = 0;
 
+/* ---- whiteboard pages / strokes subcollection state ----
+   Strokes used to live as one giant array field on the class doc, capped at
+   MAX_STROKES to stay under Firestore's 1MB doc limit. They now live in a
+   `wbPages/{pageId}/strokes/{strokeId}` subcollection instead — each stroke
+   is its own doc, so there's no practical size ceiling, deleting a single
+   stroke (undo) is a normal delete instead of a full-array rewrite, and a
+   class can have any number of pages, each with its own stroke history.
+------------------------------------------------------------- */
+let wbPagesLocal = [];        // [{id, name, order}] for the open class, sorted by order
+let wbStrokesLocal = [];      // [{id, points, color, width, tool}] for the currently-viewed page, in creation order
+let wbLiveStrokeRemote = null;// in-progress stroke from Firestore for the currently-viewed page (from the drawer)
+let wbRedoStack = [];         // strokes removed via undo, eligible for redo — session-local, cleared on page switch or new stroke
+let wbSubscribedPageId = null;// the wbPages doc id the strokes/page listeners are currently attached to
+let wbSubscribedClassId = null;// the class id the wbPages listener is currently attached to
+let unsubWbPages = null, unsubWbPageDoc = null, unsubWbStrokes = null;
+
 /* ---------------- Firestore helpers ---------------- */
 function docToClass(docSnap){
   const d = docSnap.data();
@@ -559,8 +594,7 @@ function docToClass(docSnap){
     assignments: d.assignments || [],
     grades: d.grades || {},
     stream: d.stream || [],
-    submissions: d.submissions || {},
-    whiteboard: d.whiteboard || { strokes: [], liveStroke: null }
+    submissions: d.submissions || {}
   };
 }
 
@@ -611,7 +645,6 @@ async function createClassFn(name, section, room, color){
     ownerId: state.user.uid, ownerName: state.user.name, ownerEmail: state.user.email,
     joinCode: genJoinCode(),
     memberUids: [], students: [], assignments: [], grades: {}, stream: [],
-    whiteboard: { strokes: [], liveStroke: null },
     createdAt: serverTimestamp()
   });
   return ref.id;
@@ -701,33 +734,154 @@ async function updateGradeFn(classId, studentId, assignmentId, val){
 }
 
 /* ---------------- Whiteboard Firestore helpers ----------------
-   Only the class owner (teacher) ever writes to the `whiteboard`
-   field — this matches the existing security rules, where a
-   non-owner update is only allowed if it touches memberUids /
-   students / stream / submissions. Students only ever read.
+   Structure:
+     classes/{classId}/wbPages/{pageId}                       — page metadata + transient liveStroke
+     classes/{classId}/wbPages/{pageId}/strokes/{strokeId}     — one doc per committed stroke
+
+   Only the class owner (teacher) ever draws/writes strokes or page
+   metadata — the toolbar and page-management controls are teacher-only
+   in the UI. Students (and the teacher) can freely browse pages, which
+   is a read-only operation and doesn't require any write permission.
 ------------------------------------------------------------- */
-async function pushLiveStroke(classId, strokeObj){
-  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.liveStroke': strokeObj });
+function wbPagesCol(classId){ return collection(dbFire,'classes',classId,'wbPages'); }
+function wbPageRef(classId,pageId){ return doc(dbFire,'classes',classId,'wbPages',pageId); }
+function wbStrokesCol(classId,pageId){ return collection(dbFire,'classes',classId,'wbPages',pageId,'strokes'); }
+
+async function ensureFirstWbPage(classId){
+  const snap = await getDocs(wbPagesCol(classId));
+  if(!snap.empty) return snap.docs[0].id;
+  const ref = await addDoc(wbPagesCol(classId), { name:'Page 1', order:0, createdAt: serverTimestamp() });
+  return ref.id;
 }
 
-async function commitStroke(classId, strokeObj){
-  const c = getClass(classId);
-  const existing = (c && c.whiteboard && c.whiteboard.strokes) || [];
-  if(existing.length >= MAX_STROKES){
-    // Keep the doc from growing unbounded / hitting the 1MB Firestore limit.
-    const trimmed = existing.slice(existing.length - (MAX_STROKES - 50));
-    trimmed.push(strokeObj);
-    await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.strokes': trimmed, 'whiteboard.liveStroke': null });
-  }else{
-    await updateDoc(doc(dbFire,'classes',classId), {
-      'whiteboard.strokes': arrayUnion(strokeObj),
-      'whiteboard.liveStroke': null
-    });
+async function addWbPage(classId){
+  const order = wbPagesLocal.length ? Math.max(...wbPagesLocal.map(p=>p.order)) + 1 : 0;
+  const name = `Page ${wbPagesLocal.length + 1}`;
+  const ref = await addDoc(wbPagesCol(classId), { name, order, createdAt: serverTimestamp() });
+  subscribeWbActivePage(classId, ref.id);
+  return ref.id;
+}
+
+async function deleteWbPage(classId, pageId){
+  if(wbPagesLocal.length <= 1) return; // always keep at least one page
+  const strokesSnap = await getDocs(wbStrokesCol(classId,pageId));
+  const batch = writeBatch(dbFire);
+  strokesSnap.docs.forEach(d=> batch.delete(d.ref));
+  batch.delete(wbPageRef(classId,pageId));
+  await batch.commit();
+  if(pageId === wbSubscribedPageId){
+    const fallback = wbPagesLocal.find(p=>p.id!==pageId);
+    if(fallback) subscribeWbActivePage(classId, fallback.id);
   }
 }
 
-async function clearWhiteboardFn(classId){
-  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.strokes': [], 'whiteboard.liveStroke': null });
+async function pushLiveStrokeToPage(classId, pageId, strokeObj){
+  await updateDoc(wbPageRef(classId,pageId), { liveStroke: strokeObj });
+}
+
+async function commitStrokeToPage(classId, pageId, strokeObj){
+  const { id, ...data } = strokeObj;
+  await addDoc(wbStrokesCol(classId,pageId), { ...data, createdAt: serverTimestamp() });
+  await updateDoc(wbPageRef(classId,pageId), { liveStroke: null });
+  wbRedoStack = []; // a fresh stroke invalidates any pending redo, same as standard undo/redo semantics
+  updateWbUndoRedoButtons();
+}
+
+async function undoLastStroke(classId, pageId){
+  if(!pageId || wbStrokesLocal.length===0) return;
+  const last = wbStrokesLocal[wbStrokesLocal.length-1];
+  await deleteDoc(doc(dbFire,'classes',classId,'wbPages',pageId,'strokes',last.id));
+  wbRedoStack.push(last);
+  updateWbUndoRedoButtons();
+}
+
+async function redoLastStroke(classId, pageId){
+  if(!pageId || wbRedoStack.length===0) return;
+  const strokeObj = wbRedoStack.pop();
+  const { id, ...data } = strokeObj;
+  try{
+    await addDoc(wbStrokesCol(classId,pageId), { ...data, createdAt: serverTimestamp() });
+    updateWbUndoRedoButtons();
+  }catch(err){
+    wbRedoStack.push(strokeObj); // put it back so the user can retry
+    throw err;
+  }
+}
+
+async function clearWhiteboardPage(classId, pageId){
+  if(!pageId) return;
+  const snap = await getDocs(wbStrokesCol(classId,pageId));
+  const batch = writeBatch(dbFire);
+  snap.docs.forEach(d=> batch.delete(d.ref));
+  batch.update(wbPageRef(classId,pageId), { liveStroke: null });
+  await batch.commit();
+  wbRedoStack = [];
+  updateWbUndoRedoButtons();
+}
+
+/* ---- subscription lifecycle ----
+   Pages are listed for the whole class; strokes + the live in-progress
+   stroke are only listened to for whichever single page is currently
+   being viewed, so switching pages/tabs doesn't leave stale listeners
+   racking up reads in the background.
+------------------------------------------------------------- */
+function teardownWbSubscriptions(){
+  if(unsubWbPages){ unsubWbPages(); unsubWbPages=null; }
+  if(unsubWbPageDoc){ unsubWbPageDoc(); unsubWbPageDoc=null; }
+  if(unsubWbStrokes){ unsubWbStrokes(); unsubWbStrokes=null; }
+  wbPagesLocal = []; wbStrokesLocal = []; wbLiveStrokeRemote = null; wbRedoStack = [];
+  wbSubscribedPageId = null;
+}
+
+function subscribeWbPages(classId){
+  if(unsubWbPages) unsubWbPages();
+  const q = query(wbPagesCol(classId), orderBy('order','asc'));
+  unsubWbPages = onSnapshot(q, snap=>{
+    wbPagesLocal = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    if(state.view==='class' && state.classTab==='whiteboard' && state.activeClassId===classId){
+      updateWbPageTabsDOM();
+      if(!wbSubscribedPageId && wbPagesLocal.length){
+        subscribeWbActivePage(classId, wbPagesLocal[0].id);
+      }
+    }
+  }, err=> console.error('wbPages listener error', err));
+}
+
+function subscribeWbActivePage(classId, pageId){
+  if(pageId === wbSubscribedPageId) return;
+  wbSubscribedPageId = pageId;
+  wbStrokesLocal = []; wbLiveStrokeRemote = null; wbRedoStack = [];
+  if(unsubWbPageDoc){ unsubWbPageDoc(); unsubWbPageDoc=null; }
+  if(unsubWbStrokes){ unsubWbStrokes(); unsubWbStrokes=null; }
+
+  unsubWbPageDoc = onSnapshot(wbPageRef(classId,pageId), docSnap=>{
+    wbLiveStrokeRemote = docSnap.exists() ? (docSnap.data().liveStroke || null) : null;
+    const cls = getClass(classId);
+    if(cls) redrawWhiteboard(cls);
+  }, err=> console.error('wb page doc listener error', err));
+
+  const sq = query(wbStrokesCol(classId,pageId), orderBy('createdAt','asc'));
+  unsubWbStrokes = onSnapshot(sq, snap=>{
+    wbStrokesLocal = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+    const cls = getClass(classId);
+    if(cls) redrawWhiteboard(cls);
+  }, err=> console.error('wb strokes listener error', err));
+
+  updateWbPageTabsDOM();
+  updateWbUndoRedoButtons();
+}
+
+function initWbSubscriptions(classId){
+  teardownWbSubscriptions();
+  subscribeWbPages(classId);
+  ensureFirstWbPage(classId).then(pid=>{
+    if(!wbSubscribedPageId) subscribeWbActivePage(classId, pid);
+  }).catch(err=> console.error('Failed to initialize whiteboard page', err));
+}
+
+function switchWbPage(classId, pageId){
+  if(pageId === wbSubscribedPageId) return;
+  subscribeWbActivePage(classId, pageId);
 }
 
 /* ---------------- Auth ---------------- */
@@ -769,6 +923,7 @@ onAuthStateChanged(auth, (user)=>{
   }else{
     if(unsubOwned) unsubOwned();
     if(unsubMember) unsubMember();
+    teardownWbSubscriptions(); wbSubscribedClassId = null;
     state.user = null; state.view='dashboard'; state.activeClassId=null; state.connStatus='idle';
     db.classes = []; ownedMap = {}; memberMap = {};
     document.getElementById('app').classList.add('login-hidden');
@@ -902,21 +1057,46 @@ function redrawWhiteboard(c){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0,0,canvas.width,canvas.height);
-  const wb = c.whiteboard || {};
-  (wb.strokes||[]).forEach(s=> drawStroke(ctx, s));
+  wbStrokesLocal.forEach(s=> drawStroke(ctx, s));
   // Draw the remote in-progress stroke (from Firestore) unless it's our own
   // local stroke, which we draw fresh below from the live local buffer.
-  if(wb.liveStroke && !(wbDrawing && wb.liveStroke.id === wbCurrentId)){
-    drawStroke(ctx, wb.liveStroke);
+  if(wbLiveStrokeRemote && !(wbDrawing && wbLiveStrokeRemote.id === wbCurrentId)){
+    drawStroke(ctx, wbLiveStrokeRemote);
   }
   if(wbDrawing && wbCurrentPoints.length){
     drawStroke(ctx, currentStrokeObj());
   }
+  updateWbUndoRedoButtons();
+}
+
+function updateWbUndoRedoButtons(){
+  const undoBtn = document.getElementById('wbUndoBtn');
+  const redoBtn = document.getElementById('wbRedoBtn');
+  if(undoBtn) undoBtn.disabled = wbStrokesLocal.length===0;
+  if(redoBtn) redoBtn.disabled = wbRedoStack.length===0;
+}
+
+function updateWbPageTabsDOM(){
+  const wrap = document.getElementById('wbPageTabs');
+  if(!wrap) return;
+  const cls = getClass(state.activeClassId);
+  if(!cls) return;
+  const teacher = isTeacher(cls);
+  const activePageId = wbSubscribedPageId;
+  const tabsHtml = wbPagesLocal.map(p=>`
+    <button class="wb-page-tab ${p.id===activePageId?'active':''}" data-wb-page="${p.id}" data-class="${cls.id}">
+      <span>${p.name}</span>
+      ${teacher && wbPagesLocal.length>1 ? `<span class="wb-page-del" data-wb-delete-page="${p.id}" data-class="${cls.id}" title="Delete page">&times;</span>` : ''}
+    </button>
+  `).join('');
+  const addBtn = teacher ? `<button class="wb-page-add" data-wb-add-page data-class="${cls.id}" title="Add page">+</button>` : '';
+  wrap.innerHTML = tabsHtml + addBtn || `<span class="field-note">Loading pages…</span>`;
 }
 
 function initWhiteboardCanvas(c){
   const canvas = document.getElementById('wbCanvas');
   if(!canvas || !c) return;
+  updateWbPageTabsDOM();
   redrawWhiteboard(c);
 
   const teacher = isTeacher(c);
@@ -937,12 +1117,11 @@ function initWhiteboardCanvas(c){
     const last = wbCurrentPoints[wbCurrentPoints.length-1];
     if(Math.hypot(pt.x-last.x, pt.y-last.y) < WB_MIN_POINT_DIST) return;
     wbCurrentPoints.push(pt);
-    const cls = getClass(state.activeClassId);
-    if(cls) redrawWhiteboard(cls);
+    redrawWhiteboard(c);
     const now = performance.now();
-    if(now - wbLastPushTime > WB_PUSH_INTERVAL_MS){
+    if(now - wbLastPushTime > WB_PUSH_INTERVAL_MS && wbSubscribedPageId){
       wbLastPushTime = now;
-      pushLiveStroke(state.activeClassId, currentStrokeObj()).catch(err=>console.error('Whiteboard live push failed', err));
+      pushLiveStrokeToPage(c.id, wbSubscribedPageId, currentStrokeObj()).catch(err=>console.error('Whiteboard live push failed', err));
     }
   });
 
@@ -951,11 +1130,13 @@ function initWhiteboardCanvas(c){
     wbDrawing = false;
     const strokeObj = currentStrokeObj();
     wbCurrentPoints = [];
+    const pageId = wbSubscribedPageId;
+    if(!pageId) return;
     try{
       if(strokeObj.points.length > 1){
-        await commitStroke(state.activeClassId, strokeObj);
+        await commitStrokeToPage(c.id, pageId, strokeObj);
       }else{
-        await pushLiveStroke(state.activeClassId, null);
+        await pushLiveStrokeToPage(c.id, pageId, null);
       }
     }catch(err){ console.error('Whiteboard commit failed', err); }
   };
@@ -976,7 +1157,14 @@ function render(){
   `;
   bindGlobalEvents();
   if(state.view==='class' && state.classTab==='whiteboard'){
+    if(wbSubscribedClassId !== state.activeClassId){
+      wbSubscribedClassId = state.activeClassId;
+      initWbSubscriptions(state.activeClassId);
+    }
     initWhiteboardCanvas(getClass(state.activeClassId));
+  }else if(wbSubscribedClassId){
+    teardownWbSubscriptions();
+    wbSubscribedClassId = null;
   }
 }
 
@@ -1399,6 +1587,9 @@ function renderWhiteboard(c){
   const teacher = isTeacher(c);
   return `
     <div class="wb-panel">
+      <div class="wb-pages-bar">
+        <div class="wb-page-tabs" id="wbPageTabs"></div>
+      </div>
       ${teacher ? `
       <div class="wb-toolbar">
         <div class="wb-tool-group">
@@ -1412,7 +1603,11 @@ function renderWhiteboard(c){
           <span class="wb-size-label">Size</span>
           <input type="range" id="wbSize" min="2" max="24" value="${state.wbWidth}" />
         </div>
-        <button class="btn btn-ghost" id="wbClearBtn">Clear board</button>
+        <div class="wb-tool-group">
+          <button class="wb-tool-btn" id="wbUndoBtn" data-wb-undo data-class="${c.id}" title="Undo last stroke">&#8617; Undo</button>
+          <button class="wb-tool-btn" id="wbRedoBtn" data-wb-redo data-class="${c.id}" title="Redo">&#8618; Redo</button>
+        </div>
+        <button class="btn btn-ghost" id="wbClearBtn" data-wb-clear data-class="${c.id}">Clear page</button>
       </div>
       ` : `
       <div class="wb-viewer-note">
@@ -1636,21 +1831,54 @@ function bindGlobalEvents(){
   if(wbSizeInput){
     wbSizeInput.addEventListener('input', ()=>{ state.wbWidth = Number(wbSizeInput.value); });
   }
-  const wbClearBtn = document.getElementById('wbClearBtn');
-  if(wbClearBtn){
-    wbClearBtn.addEventListener('click', async ()=>{
-      if(!confirm('Clear the whiteboard for everyone?')) return;
-      try{ await clearWhiteboardFn(state.activeClassId); }catch(e){ console.error('Clear whiteboard failed', e); }
-    });
-  }
 
   const overlay = document.getElementById('overlay');
   overlay.onclick = (e)=>{ if(e.target===overlay) closeModal(); };
 }
 
 // Delegated events for modal (modal content re-renders independently of the main app)
+// and for whiteboard page/undo/redo/clear controls (kept delegated so they still
+// work after the lightweight DOM patches used while a stroke is being drawn).
 document.addEventListener('click', async (e)=>{
   if(e.target.matches('[data-close]')) closeModal();
+
+  // Delete-page's "×" sits inside the page tab button — handle it first and
+  // stop, so a click on it doesn't also trigger the tab's page-switch below.
+  if(e.target.matches('[data-wb-delete-page]')){
+    const cid = e.target.dataset.class, pid = e.target.dataset.wbDeletePage;
+    if(confirm('Delete this page and all its drawings? This cannot be undone.')){
+      try{ await deleteWbPage(cid, pid); }catch(err){ console.error('Delete page failed', err); }
+    }
+    return;
+  }
+  if(e.target.closest('[data-wb-page]')){
+    const btn = e.target.closest('[data-wb-page]');
+    switchWbPage(btn.dataset.class, btn.dataset.wbPage);
+    return;
+  }
+  if(e.target.closest('[data-wb-add-page]')){
+    const btn = e.target.closest('[data-wb-add-page]');
+    try{ await addWbPage(btn.dataset.class); }catch(err){ console.error('Add page failed', err); }
+    return;
+  }
+  if(e.target.closest('[data-wb-undo]')){
+    const btn = e.target.closest('[data-wb-undo]');
+    if(btn.disabled) return;
+    try{ await undoLastStroke(btn.dataset.class, wbSubscribedPageId); }catch(err){ console.error('Undo failed', err); }
+    return;
+  }
+  if(e.target.closest('[data-wb-redo]')){
+    const btn = e.target.closest('[data-wb-redo]');
+    if(btn.disabled) return;
+    try{ await redoLastStroke(btn.dataset.class, wbSubscribedPageId); }catch(err){ console.error('Redo failed', err); }
+    return;
+  }
+  if(e.target.matches('[data-wb-clear]')){
+    if(confirm('Clear this page for everyone?')){
+      try{ await clearWhiteboardPage(e.target.dataset.class, wbSubscribedPageId); }catch(err){ console.error('Clear page failed', err); }
+    }
+    return;
+  }
 
   if(e.target.matches('[data-swatch]')){
     document.querySelectorAll('.swatch-opt').forEach(s=>s.classList.remove('sel'));
