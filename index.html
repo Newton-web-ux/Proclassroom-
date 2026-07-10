@@ -262,22 +262,13 @@
   .tab-btn:hover{ color:var(--ink); }
 
   .stream-compose{
-    display:flex; gap:12px; align-items:flex-start; padding:14px 18px; background:var(--paper);
+    display:flex; gap:12px; align-items:center; padding:14px 18px; background:var(--paper);
     border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:16px;
   }
-  .stream-compose .avatar{ margin-top:2px; }
-  .stream-compose-main{ flex:1; min-width:0; display:flex; flex-direction:column; gap:8px; }
   .stream-compose input{
-    width:100%; border:none; background:var(--parchment); border-radius:8px; padding:10px 12px;
+    flex:1; border:none; background:var(--parchment); border-radius:8px; padding:10px 12px;
     font-size:13.5px; outline:none; font-family:inherit;
   }
-  .stream-compose-foot{ display:flex; align-items:center; gap:10px; }
-  .stream-attach-btn{
-    display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
-    color:var(--ink-2); background:var(--parchment); border:1px solid var(--line-strong);
-    border-radius:7px; padding:6px 11px; cursor:pointer; flex-shrink:0;
-  }
-  .stream-attach-btn:hover{ border-color:var(--ochre); }
   .stream-item{
     background:var(--paper); border:1px solid var(--line); border-radius:var(--radius);
     padding:15px 18px; margin-bottom:12px; box-shadow:var(--shadow);
@@ -353,16 +344,6 @@
   }
   table.gradebook input.grade-input:focus{ outline:2px solid var(--ochre-2); border-color:transparent; }
   .avg-cell{ font-family:'IBM Plex Mono',monospace; font-weight:700; color:var(--ink); }
-
-  /* ---------- Whiteboard (embedded external app) ---------- */
-  .wb-panel{ background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; }
-  .wb-panel-head{ display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--line); background:var(--parchment); }
-  .wb-panel-head .wb-title{ font-size:13px; font-weight:700; color:var(--ink-2); display:flex; align-items:center; gap:8px; }
-  .wb-panel-head .wb-title .wb-url{ font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#7b8a80; font-weight:500; }
-  .wb-frame-wrap{ position:relative; width:100%; height:75vh; min-height:520px; background:#fff; }
-  .wb-frame-wrap iframe{ position:absolute; inset:0; width:100%; height:100%; border:0; display:block; }
-  .wb-open-new{ font-size:12px; font-weight:600; color:var(--ink-2); border:1px solid var(--line-strong); border-radius:7px; padding:6px 11px; background:var(--paper); }
-  .wb-open-new:hover{ border-color:var(--ochre); }
 
   /* ---------- Calendar ---------- */
   .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
@@ -483,9 +464,7 @@
    Firebase Auth (Google sign-in) + Firestore data store.
    Teachers create classes and get a join code; students join
    a class with that code and see a read-only / participatory
-   view scoped to their own grades. The Whiteboard tab embeds
-   the external ProWhiteboard app (https://prowhiteboard.in)
-   in an iframe rather than a built-in canvas.
+   view scoped to their own grades.
 ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
@@ -514,7 +493,6 @@ const provider = new GoogleAuthProvider();
 
 /* ---------------- App state ---------------- */
 const COLORS = ['#2C4A3B','#7A4B2E','#3C5A78','#7A3B4A','#4B4A78','#5C6B2C'];
-const WHITEBOARD_URL = 'https://prowhiteboard.in';
 
 function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,9); }
 
@@ -528,7 +506,7 @@ function genJoinCode(){
 const state = {
   view: 'dashboard',        // dashboard | calendar | class
   activeClassId: null,
-  classTab: 'stream',       // stream | classwork | people | grades | whiteboard
+  classTab: 'stream',       // stream | classwork | people | grades
   todayISO: new Date().toISOString().slice(0,10),
   user: null,                // { uid, name, email, picture }
   connStatus: 'idle',        // idle | connecting | live | error
@@ -663,10 +641,10 @@ async function addStudentFn(classId, name){
   });
 }
 
-async function postAnnouncementFn(classId, text, attachments){
+async function postAnnouncementFn(classId, text){
   const time = new Date().toLocaleString('en', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
   await updateDoc(doc(dbFire,'classes',classId), {
-    stream: arrayUnion({ id: uid('p'), author: state.user.name, time, text, attachments: attachments || [] })
+    stream: arrayUnion({ id: uid('p'), author: state.user.name, time, text })
   });
 }
 
@@ -1042,7 +1020,7 @@ function renderClass(){
   const c = getClass(state.activeClassId);
   if(!c) return `<div class="empty-state"><h4>Class not found</h4></div>`;
   const teacher = isTeacher(c);
-  const tabs = ['stream','classwork','people','grades','whiteboard'];
+  const tabs = ['stream','classwork','people','grades'];
   return `
     <div class="class-banner" style="--banner-color-1:${c.color};--banner-color-2:${c.color}dd">
       <div class="cb-sub">${c.section}</div>
@@ -1062,7 +1040,6 @@ function renderClass(){
     ${state.classTab==='classwork' ? renderClasswork(c) : ''}
     ${state.classTab==='people' ? renderPeople(c) : ''}
     ${state.classTab==='grades' ? renderGrades(c) : ''}
-    ${state.classTab==='whiteboard' ? renderWhiteboard(c) : ''}
   `;
 }
 
@@ -1070,21 +1047,10 @@ function renderStream(c){
   return `
     <div class="stream-compose">
       <div class="avatar">${initials(state.user?.name)}</div>
-      <div class="stream-compose-main">
-        <input type="text" id="streamInput" placeholder="Share an announcement with ${c.name}..." />
-        <div class="stream-compose-foot">
-          <label class="stream-attach-btn" title="Attach images or files">
-            &#128206; Attach
-            <input type="file" id="streamAttachInput" multiple accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip" hidden />
-          </label>
-          <span id="streamAttachSummary" class="field-note"></span>
-        </div>
-      </div>
-      <button class="btn btn-primary" data-post-announcement="${c.id}" style="align-self:flex-start;">Post</button>
+      <input type="text" id="streamInput" placeholder="Share an announcement with ${c.name}..." />
+      <button class="btn btn-primary" data-post-announcement="${c.id}">Post</button>
     </div>
-    ${c.stream.length? c.stream.map(p=>{
-      const atts = p.attachments || [];
-      return `
+    ${c.stream.length? c.stream.map(p=>`
       <div class="stream-item">
         <div class="si-head">
           <div class="mini-avatar">${initials(p.author)}</div>
@@ -1093,17 +1059,9 @@ function renderStream(c){
             <div class="si-time">${p.time}</div>
           </div>
         </div>
-        ${p.text? `<div class="si-body">${p.text}</div>` : ''}
-        ${atts.length? `
-          <div class="wc-attachments" style="margin-top:10px;">
-            ${atts.map(att=> isImageType(att.type)
-              ? `<a href="${att.url}" target="_blank" rel="noopener" class="wc-attach-thumb" title="${att.name}"><img src="${att.url}" alt="${att.name}" /></a>`
-              : `<a href="${att.url}" target="_blank" rel="noopener" class="wc-attach-chip" title="${att.name}">&#128206; ${att.name.length>18? att.name.slice(0,18)+'…':att.name}</a>`
-            ).join('')}
-          </div>
-        ` : ''}
+        <div class="si-body">${p.text}</div>
       </div>
-    `;}).join('') : `<div class="empty-state"><div class="es-icon">&#128172;</div><h4>No announcements yet</h4><p>Post something to get the conversation started.</p></div>`}
+    `).join('') : `<div class="empty-state"><div class="es-icon">&#128172;</div><h4>No announcements yet</h4><p>Post something to get the conversation started.</p></div>`}
   `;
 }
 
@@ -1153,7 +1111,7 @@ function renderClasswork(c){
                       <div class="wc-attachments">
                         ${sub.files.map(f=> isImageType(f.type)
                           ? `<a href="${f.url}" target="_blank" rel="noopener" class="wc-attach-thumb" title="${f.name}"><img src="${f.url}" alt="${f.name}" /></a>`
-                          : `<a href="${f.url}" target="_blank" rel="noopener" class="wc-attach-chip" title="${f.name}">&#128206; ${f.name}</a>`
+                          : `<a href="${f.url}" target="_blank" rel="noopener" class="wc-attach-chip" title="${f.name}">&#128206; ${f.name.length>18? f.name.slice(0,18)+'…':f.name}</a>`
                         ).join('')}
                       </div>
                     ` : ''}
@@ -1249,28 +1207,6 @@ function renderGrades(c){
         }).join('')}
         </tbody>
       </table>
-    </div>
-  `;
-}
-
-function renderWhiteboard(c){
-  return `
-    <div class="wb-panel">
-      <div class="wb-panel-head">
-        <div class="wb-title">
-          Whiteboard
-          <span class="wb-url">${WHITEBOARD_URL}</span>
-        </div>
-        <a class="wb-open-new" href="${WHITEBOARD_URL}" target="_blank" rel="noopener">Open in new tab &#8599;</a>
-      </div>
-      <div class="wb-frame-wrap">
-        <iframe
-          src="${WHITEBOARD_URL}"
-          title="ProWhiteboard"
-          allow="clipboard-read; clipboard-write; fullscreen"
-          referrerpolicy="no-referrer-when-downgrade"
-        ></iframe>
-      </div>
     </div>
   `;
 }
@@ -1443,44 +1379,14 @@ function bindGlobalEvents(){
       }catch(e){ console.error('Copy failed', e); }
     });
   });
-  const streamAttachInput = document.getElementById('streamAttachInput');
-  if(streamAttachInput){
-    streamAttachInput.addEventListener('change', ()=>{
-      const summary = document.getElementById('streamAttachSummary');
-      const n = streamAttachInput.files.length;
-      if(summary) summary.textContent = n ? `${n} file${n>1?'s':''} attached` : '';
-    });
-  }
   document.querySelectorAll('[data-post-announcement]').forEach(el=>{
     el.addEventListener('click', async ()=>{
       const cid = el.dataset.postAnnouncement;
       const input = document.getElementById('streamInput');
-      const attachInput = document.getElementById('streamAttachInput');
       const text = input.value.trim();
-      const files = (attachInput && attachInput.files) ? Array.from(attachInput.files) : [];
-      if(!text && !files.length) return;
-      const originalLabel = el.textContent;
-      el.disabled = true;
-      try{
-        let attachments = [];
-        if(files.length){
-          el.textContent = 'Encoding files…';
-          attachments = await encodeAttachments(files);
-        }
-        el.textContent = 'Posting…';
-        await postAnnouncementFn(cid, text, attachments);
-        input.value = '';
-        if(attachInput) attachInput.value = '';
-        const summary = document.getElementById('streamAttachSummary');
-        if(summary) summary.textContent = '';
-      }catch(e){
-        console.error('Post announcement failed', e);
-        const summary = document.getElementById('streamAttachSummary');
-        if(summary){ summary.style.color = 'var(--red-pen)'; summary.textContent = e.message || 'Could not post.'; }
-      }finally{
-        el.disabled = false;
-        el.textContent = originalLabel;
-      }
+      if(!text) return;
+      input.value = '';
+      try{ await postAnnouncementFn(cid, text); }catch(e){ console.error(e); }
     });
   });
   document.querySelectorAll('[data-grade-cell]').forEach(el=>{
