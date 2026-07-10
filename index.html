@@ -345,6 +345,23 @@
   table.gradebook input.grade-input:focus{ outline:2px solid var(--ochre-2); border-color:transparent; }
   .avg-cell{ font-family:'IBM Plex Mono',monospace; font-weight:700; color:var(--ink); }
 
+  /* ---------- Whiteboard ---------- */
+  .wb-panel{ background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; }
+  .wb-toolbar{ display:flex; flex-wrap:wrap; align-items:center; gap:16px; padding:12px 16px; border-bottom:1px solid var(--line); background:var(--parchment); }
+  .wb-tool-group{ display:flex; align-items:center; gap:8px; }
+  .wb-color-swatch{ width:22px;height:22px;border-radius:50%; border:2px solid transparent; padding:0; box-shadow: inset 0 0 0 1px rgba(31,58,46,.15); }
+  .wb-color-swatch.sel{ border-color:var(--ink); }
+  .wb-tool-btn{ padding:7px 12px; border-radius:7px; border:1px solid var(--line-strong); background:var(--paper); font-size:12.5px; font-weight:600; color:var(--ink-2); }
+  .wb-tool-btn.active{ background:var(--ink); color:var(--chalk); border-color:var(--ink); }
+  .wb-size-label{ font-size:11.5px; color:#5b6b60; font-weight:600; }
+  .wb-toolbar input[type="range"]{ width:100px; accent-color:var(--ochre); }
+  .wb-toolbar .btn{ margin-left:auto; }
+  .wb-live-badge{ font-size:10.5px; font-weight:700; color:#2A6B3E; display:inline-flex; align-items:center; gap:5px; }
+  .wb-live-badge::before{ content:''; width:7px;height:7px;border-radius:50%; background:#2A6B3E; }
+  .wb-viewer-note{ display:flex; align-items:center; justify-content:space-between; padding:10px 16px; font-size:12.5px; color:#5b6b60; border-bottom:1px solid var(--line); background:var(--parchment); }
+  .wb-canvas-wrap{ padding:14px; background:#fff; }
+  .wb-canvas-wrap canvas{ width:100%; height:auto; display:block; border-radius:8px; border:1px solid var(--line); background:#fff; touch-action:none; cursor:crosshair; }
+
   /* ---------- Calendar ---------- */
   .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
   .cal-dow{ font-size:11px; text-transform:uppercase; color:#7b8a80; text-align:center; font-weight:700; padding-bottom:4px; }
@@ -437,21 +454,6 @@
   #googleBtn:hover{ background:var(--ink-2); }
   #googleBtn:disabled{ opacity:.6; cursor:default; }
   .login-hidden{ display:none !important; }
-
-  /* ---------- Whiteboard ---------- */
-  #openWhiteboardBtn{
-    position:fixed; right:22px; bottom:22px; z-index:30;
-    box-shadow:0 10px 26px rgba(31,58,46,.28);
-  }
-  .wb-toolbar{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
-  .wb-toolbar .btn.active-tool{ background:var(--ink); color:var(--chalk); border-color:var(--ink); }
-  .wb-live-pill{
-    font-size:10.5px; font-weight:700; padding:4px 9px; border-radius:20px;
-    background:#E1EEE3; color:#2A6B3E; text-transform:uppercase; letter-spacing:.03em;
-    display:inline-flex; align-items:center; gap:5px;
-  }
-  .wb-live-pill .dot{ width:6px;height:6px;border-radius:50%; background:#2A6B3E; animation:wbPulse 1.4s infinite; }
-  @keyframes wbPulse{ 0%,100%{opacity:1;} 50%{opacity:.35;} }
 </style>
 </head>
 <body>
@@ -473,36 +475,6 @@
   <div class="modal" id="modalBody"></div>
 </div>
 
-<!-- Whiteboard Button (opens the live whiteboard for the class you currently have open) -->
-<button id="openWhiteboardBtn" class="btn btn-primary login-hidden">🖍 Whiteboard</button>
-
-<!-- Whiteboard Modal -->
-<div id="whiteboardModal" class="overlay">
-  <div class="modal" style="max-width:1100px;">
-    <div class="modal-head">
-      <h3 id="whiteboardTitle">Class Whiteboard</h3>
-      <button id="closeWhiteboardBtn" class="modal-close">✕</button>
-    </div>
-
-    <div class="modal-body" style="gap:12px;">
-      <div class="wb-toolbar">
-        <input type="color" id="wbColor" value="#1F3A2E" style="width:42px;height:36px;border:none;background:transparent;">
-        <input type="range" id="wbSize" min="1" max="24" value="3">
-        <button id="wbPenBtn" class="btn btn-ghost active-tool">Pen</button>
-        <button id="wbEraserBtn" class="btn btn-ghost">Eraser</button>
-        <button id="wbUndoBtn" class="btn btn-ghost">Undo mine</button>
-        <button id="wbClearBtn" class="btn btn-ghost">Clear for everyone</button>
-        <button id="wbSaveBtn" class="btn btn-ghost">Export PNG</button>
-        <span id="wbLivePill" class="wb-live-pill"><span class="dot"></span>Live</span>
-      </div>
-
-      <canvas id="whiteboardCanvas" width="1200" height="700"
-        style="width:100%;height:70vh;border:1px solid rgba(0,0,0,.12);border-radius:10px;background:#fff;touch-action:none;"></canvas>
-      <div class="field-note">Everyone viewing this class's whiteboard sees strokes appear as they're drawn. "Undo mine" removes your own last stroke; "Clear for everyone" wipes the board for the whole class.</div>
-    </div>
-  </div>
-</div>
-
 <script type="module">
 /* =========================================================
    PRO CLASSROOM — Dashboard
@@ -510,12 +482,6 @@
    Teachers create classes and get a join code; students join
    a class with that code and see a read-only / participatory
    view scoped to their own grades.
-
-   The whiteboard is a live, real-time collaborative canvas
-   scoped per-class: strokes are written to a Firestore
-   subcollection (classes/{classId}/whiteboard) and streamed
-   to everyone with that class open via onSnapshot, so a
-   teacher's drawing appears on students' screens as they draw.
 ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
@@ -524,8 +490,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
   getFirestore, collection, addDoc, doc, updateDoc, onSnapshot,
-  query, where, arrayUnion, deleteField, serverTimestamp, getDocs,
-  setDoc, deleteDoc, orderBy
+  query, where, arrayUnion, deleteField, serverTimestamp, getDocs
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 /* ---------------- Firebase config ---------------- */
@@ -545,6 +510,10 @@ const provider = new GoogleAuthProvider();
 
 /* ---------------- App state ---------------- */
 const COLORS = ['#2C4A3B','#7A4B2E','#3C5A78','#7A3B4A','#4B4A78','#5C6B2C'];
+const WB_COLORS = ['#1F3A2E','#A6373B','#3C5A78','#C68E17','#4B4A78','#16281F'];
+const MAX_STROKES = 400;
+const WB_PUSH_INTERVAL_MS = 150;
+const WB_MIN_POINT_DIST = 2.5;
 
 function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,9); }
 
@@ -558,15 +527,24 @@ function genJoinCode(){
 const state = {
   view: 'dashboard',        // dashboard | calendar | class
   activeClassId: null,
-  classTab: 'stream',       // stream | classwork | people | grades
+  classTab: 'stream',       // stream | classwork | people | grades | whiteboard
   todayISO: new Date().toISOString().slice(0,10),
   user: null,                // { uid, name, email, picture }
   connStatus: 'idle',        // idle | connecting | live | error
+  wbColor: WB_COLORS[0],
+  wbTool: 'pen',             // pen | eraser
+  wbWidth: 4,
 };
 
 const db = { classes: [] };
 let ownedMap = {}, memberMap = {};
 let unsubOwned = null, unsubMember = null;
+
+/* ---- local (non-Firestore) whiteboard drawing session state ---- */
+let wbDrawing = false;
+let wbCurrentPoints = [];
+let wbCurrentId = null;
+let wbLastPushTime = 0;
 
 /* ---------------- Firestore helpers ---------------- */
 function docToClass(docSnap){
@@ -581,7 +559,8 @@ function docToClass(docSnap){
     assignments: d.assignments || [],
     grades: d.grades || {},
     stream: d.stream || [],
-    submissions: d.submissions || {}
+    submissions: d.submissions || {},
+    whiteboard: d.whiteboard || { strokes: [], liveStroke: null }
   };
 }
 
@@ -592,8 +571,18 @@ function mergeClasses(){
     state.view = 'dashboard'; state.activeClassId = null;
   }
   state.connStatus = 'live';
-  render();
-  updateWhiteboardButtonVisibility();
+
+  // If the whiteboard tab is already mounted for the class that just updated,
+  // just redraw the canvas in place instead of doing a full re-render. A full
+  // re-render would destroy and recreate the <canvas> element, which would
+  // interrupt an in-progress stroke (and drop pointer capture) for the teacher,
+  // and cause visible flicker for viewers.
+  const activeClass = state.activeClassId ? merged[state.activeClassId] : null;
+  if(state.view==='class' && state.classTab==='whiteboard' && activeClass && document.getElementById('wbCanvas')){
+    redrawWhiteboard(activeClass);
+  }else{
+    render();
+  }
 }
 
 function listenClasses(){
@@ -622,6 +611,7 @@ async function createClassFn(name, section, room, color){
     ownerId: state.user.uid, ownerName: state.user.name, ownerEmail: state.user.email,
     joinCode: genJoinCode(),
     memberUids: [], students: [], assignments: [], grades: {}, stream: [],
+    whiteboard: { strokes: [], liveStroke: null },
     createdAt: serverTimestamp()
   });
   return ref.id;
@@ -710,6 +700,36 @@ async function updateGradeFn(classId, studentId, assignmentId, val){
   }
 }
 
+/* ---------------- Whiteboard Firestore helpers ----------------
+   Only the class owner (teacher) ever writes to the `whiteboard`
+   field — this matches the existing security rules, where a
+   non-owner update is only allowed if it touches memberUids /
+   students / stream / submissions. Students only ever read.
+------------------------------------------------------------- */
+async function pushLiveStroke(classId, strokeObj){
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.liveStroke': strokeObj });
+}
+
+async function commitStroke(classId, strokeObj){
+  const c = getClass(classId);
+  const existing = (c && c.whiteboard && c.whiteboard.strokes) || [];
+  if(existing.length >= MAX_STROKES){
+    // Keep the doc from growing unbounded / hitting the 1MB Firestore limit.
+    const trimmed = existing.slice(existing.length - (MAX_STROKES - 50));
+    trimmed.push(strokeObj);
+    await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.strokes': trimmed, 'whiteboard.liveStroke': null });
+  }else{
+    await updateDoc(doc(dbFire,'classes',classId), {
+      'whiteboard.strokes': arrayUnion(strokeObj),
+      'whiteboard.liveStroke': null
+    });
+  }
+}
+
+async function clearWhiteboardFn(classId){
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.strokes': [], 'whiteboard.liveStroke': null });
+}
+
 /* ---------------- Auth ---------------- */
 function friendlyAuthError(e){
   const code = e?.code || 'unknown';
@@ -753,8 +773,6 @@ onAuthStateChanged(auth, (user)=>{
     db.classes = []; ownedMap = {}; memberMap = {};
     document.getElementById('app').classList.add('login-hidden');
     document.getElementById('loginScreen').classList.remove('login-hidden');
-    wbCloseModal(); // make sure nobody is left listening to a whiteboard after sign-out
-    updateWhiteboardButtonVisibility();
   }
 });
 
@@ -839,6 +857,113 @@ function connLabel(){
   return map[state.connStatus] || map.idle;
 }
 
+/* ---------------- Whiteboard rendering / drawing ---------------- */
+function currentStrokeObj(){
+  return {
+    id: wbCurrentId,
+    points: wbCurrentPoints,
+    color: state.wbTool==='eraser' ? '#ffffff' : state.wbColor,
+    width: state.wbTool==='eraser' ? Math.max(state.wbWidth*3, 14) : state.wbWidth,
+    tool: state.wbTool
+  };
+}
+
+function getCanvasPoint(canvas, evt){
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return {
+    x: Math.round((evt.clientX - rect.left) * scaleX),
+    y: Math.round((evt.clientY - rect.top) * scaleY)
+  };
+}
+
+function drawStroke(ctx, stroke){
+  if(!stroke || !stroke.points || stroke.points.length===0) return;
+  const pts = stroke.points;
+  ctx.strokeStyle = stroke.color;
+  ctx.lineWidth = stroke.width;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  if(pts.length===1){
+    ctx.lineTo(pts[0].x+0.1, pts[0].y+0.1);
+  }else{
+    for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+  }
+  ctx.stroke();
+}
+
+function redrawWhiteboard(c){
+  const canvas = document.getElementById('wbCanvas');
+  if(!canvas || !c) return;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  const wb = c.whiteboard || {};
+  (wb.strokes||[]).forEach(s=> drawStroke(ctx, s));
+  // Draw the remote in-progress stroke (from Firestore) unless it's our own
+  // local stroke, which we draw fresh below from the live local buffer.
+  if(wb.liveStroke && !(wbDrawing && wb.liveStroke.id === wbCurrentId)){
+    drawStroke(ctx, wb.liveStroke);
+  }
+  if(wbDrawing && wbCurrentPoints.length){
+    drawStroke(ctx, currentStrokeObj());
+  }
+}
+
+function initWhiteboardCanvas(c){
+  const canvas = document.getElementById('wbCanvas');
+  if(!canvas || !c) return;
+  redrawWhiteboard(c);
+
+  const teacher = isTeacher(c);
+  if(!teacher) return; // read-only viewer — nothing to bind
+
+  canvas.addEventListener('pointerdown', (e)=>{
+    e.preventDefault();
+    canvas.setPointerCapture(e.pointerId);
+    wbDrawing = true;
+    wbCurrentId = uid('stroke');
+    wbCurrentPoints = [getCanvasPoint(canvas, e)];
+    wbLastPushTime = 0;
+  });
+
+  canvas.addEventListener('pointermove', (e)=>{
+    if(!wbDrawing) return;
+    const pt = getCanvasPoint(canvas, e);
+    const last = wbCurrentPoints[wbCurrentPoints.length-1];
+    if(Math.hypot(pt.x-last.x, pt.y-last.y) < WB_MIN_POINT_DIST) return;
+    wbCurrentPoints.push(pt);
+    const cls = getClass(state.activeClassId);
+    if(cls) redrawWhiteboard(cls);
+    const now = performance.now();
+    if(now - wbLastPushTime > WB_PUSH_INTERVAL_MS){
+      wbLastPushTime = now;
+      pushLiveStroke(state.activeClassId, currentStrokeObj()).catch(err=>console.error('Whiteboard live push failed', err));
+    }
+  });
+
+  const endStroke = async ()=>{
+    if(!wbDrawing) return;
+    wbDrawing = false;
+    const strokeObj = currentStrokeObj();
+    wbCurrentPoints = [];
+    try{
+      if(strokeObj.points.length > 1){
+        await commitStroke(state.activeClassId, strokeObj);
+      }else{
+        await pushLiveStroke(state.activeClassId, null);
+      }
+    }catch(err){ console.error('Whiteboard commit failed', err); }
+  };
+  canvas.addEventListener('pointerup', endStroke);
+  canvas.addEventListener('pointercancel', endStroke);
+  canvas.addEventListener('pointerleave', ()=>{ if(wbDrawing) endStroke(); });
+}
+
 /* ---------------- Rendering ---------------- */
 function render(){
   const app = document.getElementById('app');
@@ -850,7 +975,9 @@ function render(){
     </div>
   `;
   bindGlobalEvents();
-  updateWhiteboardButtonVisibility();
+  if(state.view==='class' && state.classTab==='whiteboard'){
+    initWhiteboardCanvas(getClass(state.activeClassId));
+  }
 }
 
 function renderSidebar(){
@@ -901,7 +1028,6 @@ function renderTopbar(){
     <div class="topbar-actions">
       <button class="btn btn-ghost" data-modal="newClass">+ Class</button>
       <button class="btn btn-primary" data-modal="newAssignment">+ Assignment</button>
-      ${state.view==='class' && getClass(state.activeClassId) ? `<button class="btn btn-ghost" data-open-whiteboard="${state.activeClassId}">🖍 Whiteboard</button>` : ''}
       <span id="syncIndicator" class="sync-indicator ${connLabel().cls}">${connLabel().text}</span>
       ${renderUserMenu()}
     </div>
@@ -1077,7 +1203,7 @@ function renderClass(){
   const c = getClass(state.activeClassId);
   if(!c) return `<div class="empty-state"><h4>Class not found</h4></div>`;
   const teacher = isTeacher(c);
-  const tabs = ['stream','classwork','people','grades'];
+  const tabs = ['stream','classwork','people','grades','whiteboard'];
   return `
     <div class="class-banner" style="--banner-color-1:${c.color};--banner-color-2:${c.color}dd">
       <div class="cb-sub">${c.section}</div>
@@ -1097,6 +1223,7 @@ function renderClass(){
     ${state.classTab==='classwork' ? renderClasswork(c) : ''}
     ${state.classTab==='people' ? renderPeople(c) : ''}
     ${state.classTab==='grades' ? renderGrades(c) : ''}
+    ${state.classTab==='whiteboard' ? renderWhiteboard(c) : ''}
   `;
 }
 
@@ -1264,6 +1391,38 @@ function renderGrades(c){
         }).join('')}
         </tbody>
       </table>
+    </div>
+  `;
+}
+
+function renderWhiteboard(c){
+  const teacher = isTeacher(c);
+  return `
+    <div class="wb-panel">
+      ${teacher ? `
+      <div class="wb-toolbar">
+        <div class="wb-tool-group">
+          ${WB_COLORS.map(col=>`<button class="wb-color-swatch ${col===state.wbColor && state.wbTool==='pen'?'sel':''}" style="background:${col}" data-wb-color="${col}" title="Pen color"></button>`).join('')}
+        </div>
+        <div class="wb-tool-group">
+          <button class="wb-tool-btn ${state.wbTool==='pen'?'active':''}" data-wb-tool="pen">&#9998; Pen</button>
+          <button class="wb-tool-btn ${state.wbTool==='eraser'?'active':''}" data-wb-tool="eraser">&#9003; Eraser</button>
+        </div>
+        <div class="wb-tool-group">
+          <span class="wb-size-label">Size</span>
+          <input type="range" id="wbSize" min="2" max="24" value="${state.wbWidth}" />
+        </div>
+        <button class="btn btn-ghost" id="wbClearBtn">Clear board</button>
+      </div>
+      ` : `
+      <div class="wb-viewer-note">
+        <span>Watching ${c.ownerName}'s live whiteboard</span>
+        <span class="wb-live-badge">Live</span>
+      </div>
+      `}
+      <div class="wb-canvas-wrap">
+        <canvas id="wbCanvas" width="1200" height="640"></canvas>
+      </div>
     </div>
   `;
 }
@@ -1453,9 +1612,37 @@ function bindGlobalEvents(){
       try{ await updateGradeFn(cid, sid, aid, val); }catch(e){ console.error(e); }
     });
   });
-  document.querySelectorAll('[data-open-whiteboard]').forEach(el=>{
-    el.addEventListener('click', ()=> wbOpenModal(el.dataset.openWhiteboard));
+
+  // Whiteboard toolbar (teacher only — element only exists when isTeacher(c) is true).
+  // These update local UI state directly (no full render()) so the canvas
+  // element — and any in-progress stroke / pointer capture on it — is never disturbed.
+  document.querySelectorAll('[data-wb-color]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      state.wbColor = el.dataset.wbColor;
+      state.wbTool = 'pen';
+      document.querySelectorAll('.wb-color-swatch').forEach(s=>s.classList.remove('sel'));
+      el.classList.add('sel');
+      document.querySelectorAll('.wb-tool-btn').forEach(b=>b.classList.toggle('active', b.dataset.wbTool==='pen'));
+    });
   });
+  document.querySelectorAll('[data-wb-tool]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      state.wbTool = el.dataset.wbTool;
+      document.querySelectorAll('.wb-tool-btn').forEach(b=>b.classList.remove('active'));
+      el.classList.add('active');
+    });
+  });
+  const wbSizeInput = document.getElementById('wbSize');
+  if(wbSizeInput){
+    wbSizeInput.addEventListener('input', ()=>{ state.wbWidth = Number(wbSizeInput.value); });
+  }
+  const wbClearBtn = document.getElementById('wbClearBtn');
+  if(wbClearBtn){
+    wbClearBtn.addEventListener('click', async ()=>{
+      if(!confirm('Clear the whiteboard for everyone?')) return;
+      try{ await clearWhiteboardFn(state.activeClassId); }catch(e){ console.error('Clear whiteboard failed', e); }
+    });
+  }
 
   const overlay = document.getElementById('overlay');
   overlay.onclick = (e)=>{ if(e.target===overlay) closeModal(); };
@@ -1573,252 +1760,6 @@ document.addEventListener('click', async (e)=>{
     }catch(err){ console.error('Add student failed', err); }
   }
 });
-
-/* =========================================================
-   LIVE WHITEBOARD
-   Strokes are stored per-class in Firestore at
-   classes/{classId}/whiteboard/{strokeId}. Each stroke is
-   written as soon as the user starts drawing and is updated
-   (throttled) as points are added, so anyone else with the
-   same class's whiteboard open sees it appear via onSnapshot
-   in real time — this is what makes "live teaching" work:
-   a teacher draws, students watching see the ink appear.
-========================================================= */
-
-const wbCanvas = document.getElementById('whiteboardCanvas');
-const wbCtx = wbCanvas.getContext('2d');
-const wbColorInput = document.getElementById('wbColor');
-const wbSizeInput = document.getElementById('wbSize');
-const wbPenBtn = document.getElementById('wbPenBtn');
-const wbEraserBtn = document.getElementById('wbEraserBtn');
-const wbUndoBtn = document.getElementById('wbUndoBtn');
-const wbClearBtn = document.getElementById('wbClearBtn');
-const wbSaveBtn = document.getElementById('wbSaveBtn');
-const wbTitleEl = document.getElementById('whiteboardTitle');
-const wbLivePill = document.getElementById('wbLivePill');
-const openWhiteboardBtn = document.getElementById('openWhiteboardBtn');
-const closeWhiteboardBtn = document.getElementById('closeWhiteboardBtn');
-const whiteboardModal = document.getElementById('whiteboardModal');
-
-const WB_SYNC_THROTTLE_MS = 120; // how often in-progress strokes are pushed to Firestore
-
-let wbMode = 'pen';
-let wbDrawing = false;
-let wbStrokes = [];        // latest snapshot of all strokes for the open class, in draw order
-let wbCurrentStroke = null;
-let wbCurrentDocRef = null;
-let wbUnsub = null;
-let wbSyncPending = false;
-let wbActiveClassId = null;
-
-function updateWhiteboardButtonVisibility(){
-  if(!openWhiteboardBtn) return;
-  if(state.user){
-    openWhiteboardBtn.classList.remove('login-hidden');
-  }else{
-    openWhiteboardBtn.classList.add('login-hidden');
-  }
-}
-
-function wbResizeCanvas(){
-  const rect = wbCanvas.getBoundingClientRect();
-  const temp = document.createElement('canvas');
-  temp.width = wbCanvas.width; temp.height = wbCanvas.height;
-  temp.getContext('2d').drawImage(wbCanvas, 0, 0);
-  wbCanvas.width = Math.max(1, Math.floor(rect.width * devicePixelRatio));
-  wbCanvas.height = Math.max(1, Math.floor(rect.height * devicePixelRatio));
-  wbCtx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-  wbCtx.lineCap = 'round';
-  wbCtx.lineJoin = 'round';
-  wbRedrawAll();
-}
-
-function wbDrawStroke(s){
-  if(!s || !s.points || !s.points.length) return;
-  wbCtx.save();
-  wbCtx.globalCompositeOperation = s.mode === 'erase' ? 'destination-out' : 'source-over';
-  wbCtx.strokeStyle = s.color || '#1F3A2E';
-  wbCtx.fillStyle = s.color || '#1F3A2E';
-  wbCtx.lineWidth = s.size || 3;
-  if(s.points.length === 1){
-    wbCtx.beginPath();
-    wbCtx.arc(s.points[0].x, s.points[0].y, (s.size || 3) / 2, 0, Math.PI * 2);
-    wbCtx.fill();
-  }else{
-    wbCtx.beginPath();
-    wbCtx.moveTo(s.points[0].x, s.points[0].y);
-    for(let i = 1; i < s.points.length; i++) wbCtx.lineTo(s.points[i].x, s.points[i].y);
-    wbCtx.stroke();
-  }
-  wbCtx.restore();
-}
-
-function wbRedrawAll(){
-  wbCtx.clearRect(0, 0, wbCanvas.width, wbCanvas.height);
-  wbStrokes.forEach(wbDrawStroke);
-}
-
-function wbGetPos(e){
-  const rect = wbCanvas.getBoundingClientRect();
-  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-}
-
-function wbListen(classId){
-  if(wbUnsub){ wbUnsub(); wbUnsub = null; }
-  wbStrokes = [];
-  wbRedrawAll();
-  const q = query(collection(dbFire, 'classes', classId, 'whiteboard'), orderBy('createdAt'));
-  wbUnsub = onSnapshot(q, snap=>{
-    wbStrokes = snap.docs.map(d=> ({ id: d.id, ...d.data() }));
-    wbRedrawAll();
-  }, err=>{
-    console.error('whiteboard listener error', err);
-  });
-}
-
-function wbStopListening(){
-  if(wbUnsub){ wbUnsub(); wbUnsub = null; }
-  wbStrokes = [];
-  wbCurrentStroke = null;
-  wbCurrentDocRef = null;
-  wbActiveClassId = null;
-}
-
-async function wbStartDraw(e){
-  if(!wbActiveClassId || !state.user) return;
-  wbDrawing = true;
-  const p = wbGetPos(e);
-  const strokeRef = doc(collection(dbFire, 'classes', wbActiveClassId, 'whiteboard'));
-  wbCurrentDocRef = strokeRef;
-  wbCurrentStroke = {
-    mode: wbMode,
-    color: wbColorInput.value,
-    size: Number(wbSizeInput.value),
-    points: [p],
-    authorId: state.user.uid,
-    authorName: state.user.name,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
-  };
-  try{
-    await setDoc(strokeRef, wbCurrentStroke);
-  }catch(err){
-    console.error('whiteboard start failed', err);
-  }
-}
-
-function wbMoveDraw(e){
-  if(!wbDrawing || !wbCurrentStroke) return;
-  const p = wbGetPos(e);
-  wbCurrentStroke.points.push(p);
-  wbDrawStroke(wbCurrentStroke); // draw locally right away so it feels instant
-  wbScheduleSync();
-}
-
-function wbScheduleSync(){
-  if(wbSyncPending) return;
-  wbSyncPending = true;
-  setTimeout(async ()=>{
-    wbSyncPending = false;
-    if(wbCurrentDocRef && wbCurrentStroke){
-      try{
-        await updateDoc(wbCurrentDocRef, { points: wbCurrentStroke.points, updatedAt: serverTimestamp() });
-      }catch(err){ console.error('whiteboard sync failed', err); }
-    }
-  }, WB_SYNC_THROTTLE_MS);
-}
-
-async function wbEndDraw(){
-  if(!wbDrawing) return;
-  wbDrawing = false;
-  const ref = wbCurrentDocRef, stroke = wbCurrentStroke;
-  wbCurrentStroke = null;
-  wbCurrentDocRef = null;
-  if(ref && stroke){
-    try{
-      await updateDoc(ref, { points: stroke.points, updatedAt: serverTimestamp() });
-    }catch(err){ console.error('whiteboard final sync failed', err); }
-  }
-}
-
-async function wbUndoMine(){
-  if(!wbActiveClassId || !state.user) return;
-  for(let i = wbStrokes.length - 1; i >= 0; i--){
-    if(wbStrokes[i].authorId === state.user.uid){
-      try{ await deleteDoc(doc(dbFire, 'classes', wbActiveClassId, 'whiteboard', wbStrokes[i].id)); }
-      catch(err){ console.error('whiteboard undo failed', err); }
-      return;
-    }
-  }
-}
-
-async function wbClearForEveryone(){
-  if(!wbActiveClassId) return;
-  if(!confirm('Clear the whiteboard for everyone in this class?')) return;
-  try{
-    const snap = await getDocs(collection(dbFire, 'classes', wbActiveClassId, 'whiteboard'));
-    await Promise.all(snap.docs.map(d=> deleteDoc(doc(dbFire, 'classes', wbActiveClassId, 'whiteboard', d.id))));
-  }catch(err){ console.error('whiteboard clear failed', err); }
-}
-
-function wbExportPng(){
-  const link = document.createElement('a');
-  link.download = `whiteboard-${wbActiveClassId || 'export'}.png`;
-  link.href = wbCanvas.toDataURL('image/png');
-  link.click();
-}
-
-function wbSetMode(mode){
-  wbMode = mode;
-  wbPenBtn.classList.toggle('active-tool', mode === 'pen');
-  wbEraserBtn.classList.toggle('active-tool', mode === 'erase');
-}
-
-function wbOpenModal(classId){
-  if(!state.user){ alert('Sign in first.'); return; }
-  const cls = getClass(classId);
-  if(!cls){ alert('Open a class first, then launch the whiteboard from inside it.'); return; }
-  wbActiveClassId = classId;
-  wbTitleEl.textContent = `${cls.name} — Live Whiteboard`;
-  whiteboardModal.classList.add('show');
-  setTimeout(()=> wbResizeCanvas(), 0);
-  wbListen(classId);
-}
-
-function wbCloseModal(){
-  whiteboardModal.classList.remove('show');
-  wbStopListening();
-}
-
-wbCanvas.addEventListener('pointerdown', e=>{ wbCanvas.setPointerCapture(e.pointerId); wbStartDraw(e); });
-wbCanvas.addEventListener('pointermove', wbMoveDraw);
-wbCanvas.addEventListener('pointerup', wbEndDraw);
-wbCanvas.addEventListener('pointercancel', wbEndDraw);
-
-wbPenBtn.onclick = ()=> wbSetMode('pen');
-wbEraserBtn.onclick = ()=> wbSetMode('erase');
-wbUndoBtn.onclick = wbUndoMine;
-wbClearBtn.onclick = wbClearForEveryone;
-wbSaveBtn.onclick = wbExportPng;
-
-openWhiteboardBtn.onclick = ()=>{
-  if(state.view === 'class' && state.activeClassId){
-    wbOpenModal(state.activeClassId);
-  }else if(!state.user){
-    alert('Sign in first.');
-  }else{
-    alert('Open a class first, then launch the whiteboard from inside it.');
-  }
-};
-closeWhiteboardBtn.onclick = wbCloseModal;
-whiteboardModal.addEventListener('click', (e)=>{ if(e.target === whiteboardModal) wbCloseModal(); });
-
-window.addEventListener('resize', ()=>{
-  if(whiteboardModal.classList.contains('show')) wbResizeCanvas();
-});
-
-wbSetMode('pen');
-updateWhiteboardButtonVisibility();
 </script>
 </body>
 </html>
