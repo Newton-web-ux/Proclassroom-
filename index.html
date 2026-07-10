@@ -1264,12 +1264,12 @@ function renderWhiteboard(c){
         <a class="wb-open-new" href="${WHITEBOARD_URL}" target="_blank" rel="noopener">Open in new tab &#8599;</a>
       </div>
       <div class="wb-frame-wrap">
-        <iframe
-          src="${WHITEBOARD_URL}"
-          title="ProWhiteboard"
-          allow="clipboard-read; clipboard-write; fullscreen"
-          referrerpolicy="no-referrer-when-downgrade"
-        ></iframe>
+       <iframe
+    src="${WHITEBOARD_URL}?room=${c.id}"
+    title="ProWhiteboard"
+    allow="clipboard-read; clipboard-write; fullscreen"
+    referrerpolicy="no-referrer-when-downgrade"
+></iframe>
       </div>
     </div>
   `;
