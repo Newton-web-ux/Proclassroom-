@@ -262,13 +262,22 @@
   .tab-btn:hover{ color:var(--ink); }
 
   .stream-compose{
-    display:flex; gap:12px; align-items:center; padding:14px 18px; background:var(--paper);
+    display:flex; gap:12px; align-items:flex-start; padding:14px 18px; background:var(--paper);
     border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:16px;
   }
+  .stream-compose .avatar{ margin-top:2px; }
+  .stream-compose-main{ flex:1; min-width:0; display:flex; flex-direction:column; gap:8px; }
   .stream-compose input{
-    flex:1; border:none; background:var(--parchment); border-radius:8px; padding:10px 12px;
+    width:100%; border:none; background:var(--parchment); border-radius:8px; padding:10px 12px;
     font-size:13.5px; outline:none; font-family:inherit;
   }
+  .stream-compose-foot{ display:flex; align-items:center; gap:10px; }
+  .stream-attach-btn{
+    display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
+    color:var(--ink-2); background:var(--parchment); border:1px solid var(--line-strong);
+    border-radius:7px; padding:6px 11px; cursor:pointer; flex-shrink:0;
+  }
+  .stream-attach-btn:hover{ border-color:var(--ochre); }
   .stream-item{
     background:var(--paper); border:1px solid var(--line); border-radius:var(--radius);
     padding:15px 18px; margin-bottom:12px; box-shadow:var(--shadow);
@@ -345,22 +354,15 @@
   table.gradebook input.grade-input:focus{ outline:2px solid var(--ochre-2); border-color:transparent; }
   .avg-cell{ font-family:'IBM Plex Mono',monospace; font-weight:700; color:var(--ink); }
 
-  /* ---------- Whiteboard ---------- */
+  /* ---------- Whiteboard (embedded external app) ---------- */
   .wb-panel{ background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; }
-  .wb-toolbar{ display:flex; flex-wrap:wrap; align-items:center; gap:16px; padding:12px 16px; border-bottom:1px solid var(--line); background:var(--parchment); }
-  .wb-tool-group{ display:flex; align-items:center; gap:8px; }
-  .wb-color-swatch{ width:22px;height:22px;border-radius:50%; border:2px solid transparent; padding:0; box-shadow: inset 0 0 0 1px rgba(31,58,46,.15); }
-  .wb-color-swatch.sel{ border-color:var(--ink); }
-  .wb-tool-btn{ padding:7px 12px; border-radius:7px; border:1px solid var(--line-strong); background:var(--paper); font-size:12.5px; font-weight:600; color:var(--ink-2); }
-  .wb-tool-btn.active{ background:var(--ink); color:var(--chalk); border-color:var(--ink); }
-  .wb-size-label{ font-size:11.5px; color:#5b6b60; font-weight:600; }
-  .wb-toolbar input[type="range"]{ width:100px; accent-color:var(--ochre); }
-  .wb-toolbar .btn{ margin-left:auto; }
-  .wb-live-badge{ font-size:10.5px; font-weight:700; color:#2A6B3E; display:inline-flex; align-items:center; gap:5px; }
-  .wb-live-badge::before{ content:''; width:7px;height:7px;border-radius:50%; background:#2A6B3E; }
-  .wb-viewer-note{ display:flex; align-items:center; justify-content:space-between; padding:10px 16px; font-size:12.5px; color:#5b6b60; border-bottom:1px solid var(--line); background:var(--parchment); }
-  .wb-canvas-wrap{ padding:14px; background:#fff; }
-  .wb-canvas-wrap canvas{ width:100%; height:auto; display:block; border-radius:8px; border:1px solid var(--line); background:#fff; touch-action:none; cursor:crosshair; }
+  .wb-panel-head{ display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--line); background:var(--parchment); }
+  .wb-panel-head .wb-title{ font-size:13px; font-weight:700; color:var(--ink-2); display:flex; align-items:center; gap:8px; }
+  .wb-panel-head .wb-title .wb-url{ font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#7b8a80; font-weight:500; }
+  .wb-frame-wrap{ position:relative; width:100%; height:75vh; min-height:520px; background:#fff; }
+  .wb-frame-wrap iframe{ position:absolute; inset:0; width:100%; height:100%; border:0; display:block; }
+  .wb-open-new{ font-size:12px; font-weight:600; color:var(--ink-2); border:1px solid var(--line-strong); border-radius:7px; padding:6px 11px; background:var(--paper); }
+  .wb-open-new:hover{ border-color:var(--ochre); }
 
   /* ---------- Calendar ---------- */
   .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
@@ -481,7 +483,9 @@
    Firebase Auth (Google sign-in) + Firestore data store.
    Teachers create classes and get a join code; students join
    a class with that code and see a read-only / participatory
-   view scoped to their own grades.
+   view scoped to their own grades. The Whiteboard tab embeds
+   the external ProWhiteboard app (https://prowhiteboard.in)
+   in an iframe rather than a built-in canvas.
 ========================================================= */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
@@ -510,10 +514,7 @@ const provider = new GoogleAuthProvider();
 
 /* ---------------- App state ---------------- */
 const COLORS = ['#2C4A3B','#7A4B2E','#3C5A78','#7A3B4A','#4B4A78','#5C6B2C'];
-const WB_COLORS = ['#1F3A2E','#A6373B','#3C5A78','#C68E17','#4B4A78','#16281F'];
-const MAX_STROKES = 400;
-const WB_PUSH_INTERVAL_MS = 150;
-const WB_MIN_POINT_DIST = 2.5;
+const WHITEBOARD_URL = 'https://prowhiteboard.in';
 
 function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,9); }
 
@@ -531,20 +532,11 @@ const state = {
   todayISO: new Date().toISOString().slice(0,10),
   user: null,                // { uid, name, email, picture }
   connStatus: 'idle',        // idle | connecting | live | error
-  wbColor: WB_COLORS[0],
-  wbTool: 'pen',             // pen | eraser
-  wbWidth: 4,
 };
 
 const db = { classes: [] };
 let ownedMap = {}, memberMap = {};
 let unsubOwned = null, unsubMember = null;
-
-/* ---- local (non-Firestore) whiteboard drawing session state ---- */
-let wbDrawing = false;
-let wbCurrentPoints = [];
-let wbCurrentId = null;
-let wbLastPushTime = 0;
 
 /* ---------------- Firestore helpers ---------------- */
 function docToClass(docSnap){
@@ -559,8 +551,7 @@ function docToClass(docSnap){
     assignments: d.assignments || [],
     grades: d.grades || {},
     stream: d.stream || [],
-    submissions: d.submissions || {},
-    whiteboard: d.whiteboard || { strokes: [], liveStroke: null }
+    submissions: d.submissions || {}
   };
 }
 
@@ -571,18 +562,7 @@ function mergeClasses(){
     state.view = 'dashboard'; state.activeClassId = null;
   }
   state.connStatus = 'live';
-
-  // If the whiteboard tab is already mounted for the class that just updated,
-  // just redraw the canvas in place instead of doing a full re-render. A full
-  // re-render would destroy and recreate the <canvas> element, which would
-  // interrupt an in-progress stroke (and drop pointer capture) for the teacher,
-  // and cause visible flicker for viewers.
-  const activeClass = state.activeClassId ? merged[state.activeClassId] : null;
-  if(state.view==='class' && state.classTab==='whiteboard' && activeClass && document.getElementById('wbCanvas')){
-    redrawWhiteboard(activeClass);
-  }else{
-    render();
-  }
+  render();
 }
 
 function listenClasses(){
@@ -611,7 +591,6 @@ async function createClassFn(name, section, room, color){
     ownerId: state.user.uid, ownerName: state.user.name, ownerEmail: state.user.email,
     joinCode: genJoinCode(),
     memberUids: [], students: [], assignments: [], grades: {}, stream: [],
-    whiteboard: { strokes: [], liveStroke: null },
     createdAt: serverTimestamp()
   });
   return ref.id;
@@ -684,10 +663,10 @@ async function addStudentFn(classId, name){
   });
 }
 
-async function postAnnouncementFn(classId, text){
+async function postAnnouncementFn(classId, text, attachments){
   const time = new Date().toLocaleString('en', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
   await updateDoc(doc(dbFire,'classes',classId), {
-    stream: arrayUnion({ id: uid('p'), author: state.user.name, time, text })
+    stream: arrayUnion({ id: uid('p'), author: state.user.name, time, text, attachments: attachments || [] })
   });
 }
 
@@ -698,36 +677,6 @@ async function updateGradeFn(classId, studentId, assignmentId, val){
   }else{
     await updateDoc(doc(dbFire,'classes',classId), { [fieldPath]: val });
   }
-}
-
-/* ---------------- Whiteboard Firestore helpers ----------------
-   Only the class owner (teacher) ever writes to the `whiteboard`
-   field — this matches the existing security rules, where a
-   non-owner update is only allowed if it touches memberUids /
-   students / stream / submissions. Students only ever read.
-------------------------------------------------------------- */
-async function pushLiveStroke(classId, strokeObj){
-  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.liveStroke': strokeObj });
-}
-
-async function commitStroke(classId, strokeObj){
-  const c = getClass(classId);
-  const existing = (c && c.whiteboard && c.whiteboard.strokes) || [];
-  if(existing.length >= MAX_STROKES){
-    // Keep the doc from growing unbounded / hitting the 1MB Firestore limit.
-    const trimmed = existing.slice(existing.length - (MAX_STROKES - 50));
-    trimmed.push(strokeObj);
-    await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.strokes': trimmed, 'whiteboard.liveStroke': null });
-  }else{
-    await updateDoc(doc(dbFire,'classes',classId), {
-      'whiteboard.strokes': arrayUnion(strokeObj),
-      'whiteboard.liveStroke': null
-    });
-  }
-}
-
-async function clearWhiteboardFn(classId){
-  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.strokes': [], 'whiteboard.liveStroke': null });
 }
 
 /* ---------------- Auth ---------------- */
@@ -857,113 +806,6 @@ function connLabel(){
   return map[state.connStatus] || map.idle;
 }
 
-/* ---------------- Whiteboard rendering / drawing ---------------- */
-function currentStrokeObj(){
-  return {
-    id: wbCurrentId,
-    points: wbCurrentPoints,
-    color: state.wbTool==='eraser' ? '#ffffff' : state.wbColor,
-    width: state.wbTool==='eraser' ? Math.max(state.wbWidth*3, 14) : state.wbWidth,
-    tool: state.wbTool
-  };
-}
-
-function getCanvasPoint(canvas, evt){
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-  return {
-    x: Math.round((evt.clientX - rect.left) * scaleX),
-    y: Math.round((evt.clientY - rect.top) * scaleY)
-  };
-}
-
-function drawStroke(ctx, stroke){
-  if(!stroke || !stroke.points || stroke.points.length===0) return;
-  const pts = stroke.points;
-  ctx.strokeStyle = stroke.color;
-  ctx.lineWidth = stroke.width;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  if(pts.length===1){
-    ctx.lineTo(pts[0].x+0.1, pts[0].y+0.1);
-  }else{
-    for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
-  }
-  ctx.stroke();
-}
-
-function redrawWhiteboard(c){
-  const canvas = document.getElementById('wbCanvas');
-  if(!canvas || !c) return;
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0,0,canvas.width,canvas.height);
-  const wb = c.whiteboard || {};
-  (wb.strokes||[]).forEach(s=> drawStroke(ctx, s));
-  // Draw the remote in-progress stroke (from Firestore) unless it's our own
-  // local stroke, which we draw fresh below from the live local buffer.
-  if(wb.liveStroke && !(wbDrawing && wb.liveStroke.id === wbCurrentId)){
-    drawStroke(ctx, wb.liveStroke);
-  }
-  if(wbDrawing && wbCurrentPoints.length){
-    drawStroke(ctx, currentStrokeObj());
-  }
-}
-
-function initWhiteboardCanvas(c){
-  const canvas = document.getElementById('wbCanvas');
-  if(!canvas || !c) return;
-  redrawWhiteboard(c);
-
-  const teacher = isTeacher(c);
-  if(!teacher) return; // read-only viewer — nothing to bind
-
-  canvas.addEventListener('pointerdown', (e)=>{
-    e.preventDefault();
-    canvas.setPointerCapture(e.pointerId);
-    wbDrawing = true;
-    wbCurrentId = uid('stroke');
-    wbCurrentPoints = [getCanvasPoint(canvas, e)];
-    wbLastPushTime = 0;
-  });
-
-  canvas.addEventListener('pointermove', (e)=>{
-    if(!wbDrawing) return;
-    const pt = getCanvasPoint(canvas, e);
-    const last = wbCurrentPoints[wbCurrentPoints.length-1];
-    if(Math.hypot(pt.x-last.x, pt.y-last.y) < WB_MIN_POINT_DIST) return;
-    wbCurrentPoints.push(pt);
-    const cls = getClass(state.activeClassId);
-    if(cls) redrawWhiteboard(cls);
-    const now = performance.now();
-    if(now - wbLastPushTime > WB_PUSH_INTERVAL_MS){
-      wbLastPushTime = now;
-      pushLiveStroke(state.activeClassId, currentStrokeObj()).catch(err=>console.error('Whiteboard live push failed', err));
-    }
-  });
-
-  const endStroke = async ()=>{
-    if(!wbDrawing) return;
-    wbDrawing = false;
-    const strokeObj = currentStrokeObj();
-    wbCurrentPoints = [];
-    try{
-      if(strokeObj.points.length > 1){
-        await commitStroke(state.activeClassId, strokeObj);
-      }else{
-        await pushLiveStroke(state.activeClassId, null);
-      }
-    }catch(err){ console.error('Whiteboard commit failed', err); }
-  };
-  canvas.addEventListener('pointerup', endStroke);
-  canvas.addEventListener('pointercancel', endStroke);
-  canvas.addEventListener('pointerleave', ()=>{ if(wbDrawing) endStroke(); });
-}
-
 /* ---------------- Rendering ---------------- */
 function render(){
   const app = document.getElementById('app');
@@ -975,9 +817,6 @@ function render(){
     </div>
   `;
   bindGlobalEvents();
-  if(state.view==='class' && state.classTab==='whiteboard'){
-    initWhiteboardCanvas(getClass(state.activeClassId));
-  }
 }
 
 function renderSidebar(){
@@ -1231,10 +1070,21 @@ function renderStream(c){
   return `
     <div class="stream-compose">
       <div class="avatar">${initials(state.user?.name)}</div>
-      <input type="text" id="streamInput" placeholder="Share an announcement with ${c.name}..." />
-      <button class="btn btn-primary" data-post-announcement="${c.id}">Post</button>
+      <div class="stream-compose-main">
+        <input type="text" id="streamInput" placeholder="Share an announcement with ${c.name}..." />
+        <div class="stream-compose-foot">
+          <label class="stream-attach-btn" title="Attach images or files">
+            &#128206; Attach
+            <input type="file" id="streamAttachInput" multiple accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip" hidden />
+          </label>
+          <span id="streamAttachSummary" class="field-note"></span>
+        </div>
+      </div>
+      <button class="btn btn-primary" data-post-announcement="${c.id}" style="align-self:flex-start;">Post</button>
     </div>
-    ${c.stream.length? c.stream.map(p=>`
+    ${c.stream.length? c.stream.map(p=>{
+      const atts = p.attachments || [];
+      return `
       <div class="stream-item">
         <div class="si-head">
           <div class="mini-avatar">${initials(p.author)}</div>
@@ -1243,9 +1093,17 @@ function renderStream(c){
             <div class="si-time">${p.time}</div>
           </div>
         </div>
-        <div class="si-body">${p.text}</div>
+        ${p.text? `<div class="si-body">${p.text}</div>` : ''}
+        ${atts.length? `
+          <div class="wc-attachments" style="margin-top:10px;">
+            ${atts.map(att=> isImageType(att.type)
+              ? `<a href="${att.url}" target="_blank" rel="noopener" class="wc-attach-thumb" title="${att.name}"><img src="${att.url}" alt="${att.name}" /></a>`
+              : `<a href="${att.url}" target="_blank" rel="noopener" class="wc-attach-chip" title="${att.name}">&#128206; ${att.name.length>18? att.name.slice(0,18)+'…':att.name}</a>`
+            ).join('')}
+          </div>
+        ` : ''}
       </div>
-    `).join('') : `<div class="empty-state"><div class="es-icon">&#128172;</div><h4>No announcements yet</h4><p>Post something to get the conversation started.</p></div>`}
+    `;}).join('') : `<div class="empty-state"><div class="es-icon">&#128172;</div><h4>No announcements yet</h4><p>Post something to get the conversation started.</p></div>`}
   `;
 }
 
@@ -1295,7 +1153,7 @@ function renderClasswork(c){
                       <div class="wc-attachments">
                         ${sub.files.map(f=> isImageType(f.type)
                           ? `<a href="${f.url}" target="_blank" rel="noopener" class="wc-attach-thumb" title="${f.name}"><img src="${f.url}" alt="${f.name}" /></a>`
-                          : `<a href="${f.url}" target="_blank" rel="noopener" class="wc-attach-chip" title="${f.name}">&#128206; ${f.name.length>18? f.name.slice(0,18)+'…':f.name}</a>`
+                          : `<a href="${f.url}" target="_blank" rel="noopener" class="wc-attach-chip" title="${f.name}">&#128206; ${f.name}</a>`
                         ).join('')}
                       </div>
                     ` : ''}
@@ -1396,32 +1254,22 @@ function renderGrades(c){
 }
 
 function renderWhiteboard(c){
-  const teacher = isTeacher(c);
   return `
     <div class="wb-panel">
-      ${teacher ? `
-      <div class="wb-toolbar">
-        <div class="wb-tool-group">
-          ${WB_COLORS.map(col=>`<button class="wb-color-swatch ${col===state.wbColor && state.wbTool==='pen'?'sel':''}" style="background:${col}" data-wb-color="${col}" title="Pen color"></button>`).join('')}
+      <div class="wb-panel-head">
+        <div class="wb-title">
+          Whiteboard
+          <span class="wb-url">${WHITEBOARD_URL}</span>
         </div>
-        <div class="wb-tool-group">
-          <button class="wb-tool-btn ${state.wbTool==='pen'?'active':''}" data-wb-tool="pen">&#9998; Pen</button>
-          <button class="wb-tool-btn ${state.wbTool==='eraser'?'active':''}" data-wb-tool="eraser">&#9003; Eraser</button>
-        </div>
-        <div class="wb-tool-group">
-          <span class="wb-size-label">Size</span>
-          <input type="range" id="wbSize" min="2" max="24" value="${state.wbWidth}" />
-        </div>
-        <button class="btn btn-ghost" id="wbClearBtn">Clear board</button>
+        <a class="wb-open-new" href="${WHITEBOARD_URL}" target="_blank" rel="noopener">Open in new tab &#8599;</a>
       </div>
-      ` : `
-      <div class="wb-viewer-note">
-        <span>Watching ${c.ownerName}'s live whiteboard</span>
-        <span class="wb-live-badge">Live</span>
-      </div>
-      `}
-      <div class="wb-canvas-wrap">
-        <canvas id="wbCanvas" width="1200" height="640"></canvas>
+      <div class="wb-frame-wrap">
+        <iframe
+          src="${WHITEBOARD_URL}"
+          title="ProWhiteboard"
+          allow="clipboard-read; clipboard-write; fullscreen"
+          referrerpolicy="no-referrer-when-downgrade"
+        ></iframe>
       </div>
     </div>
   `;
@@ -1595,14 +1443,44 @@ function bindGlobalEvents(){
       }catch(e){ console.error('Copy failed', e); }
     });
   });
+  const streamAttachInput = document.getElementById('streamAttachInput');
+  if(streamAttachInput){
+    streamAttachInput.addEventListener('change', ()=>{
+      const summary = document.getElementById('streamAttachSummary');
+      const n = streamAttachInput.files.length;
+      if(summary) summary.textContent = n ? `${n} file${n>1?'s':''} attached` : '';
+    });
+  }
   document.querySelectorAll('[data-post-announcement]').forEach(el=>{
     el.addEventListener('click', async ()=>{
       const cid = el.dataset.postAnnouncement;
       const input = document.getElementById('streamInput');
+      const attachInput = document.getElementById('streamAttachInput');
       const text = input.value.trim();
-      if(!text) return;
-      input.value = '';
-      try{ await postAnnouncementFn(cid, text); }catch(e){ console.error(e); }
+      const files = (attachInput && attachInput.files) ? Array.from(attachInput.files) : [];
+      if(!text && !files.length) return;
+      const originalLabel = el.textContent;
+      el.disabled = true;
+      try{
+        let attachments = [];
+        if(files.length){
+          el.textContent = 'Encoding files…';
+          attachments = await encodeAttachments(files);
+        }
+        el.textContent = 'Posting…';
+        await postAnnouncementFn(cid, text, attachments);
+        input.value = '';
+        if(attachInput) attachInput.value = '';
+        const summary = document.getElementById('streamAttachSummary');
+        if(summary) summary.textContent = '';
+      }catch(e){
+        console.error('Post announcement failed', e);
+        const summary = document.getElementById('streamAttachSummary');
+        if(summary){ summary.style.color = 'var(--red-pen)'; summary.textContent = e.message || 'Could not post.'; }
+      }finally{
+        el.disabled = false;
+        el.textContent = originalLabel;
+      }
     });
   });
   document.querySelectorAll('[data-grade-cell]').forEach(el=>{
@@ -1612,37 +1490,6 @@ function bindGlobalEvents(){
       try{ await updateGradeFn(cid, sid, aid, val); }catch(e){ console.error(e); }
     });
   });
-
-  // Whiteboard toolbar (teacher only — element only exists when isTeacher(c) is true).
-  // These update local UI state directly (no full render()) so the canvas
-  // element — and any in-progress stroke / pointer capture on it — is never disturbed.
-  document.querySelectorAll('[data-wb-color]').forEach(el=>{
-    el.addEventListener('click', ()=>{
-      state.wbColor = el.dataset.wbColor;
-      state.wbTool = 'pen';
-      document.querySelectorAll('.wb-color-swatch').forEach(s=>s.classList.remove('sel'));
-      el.classList.add('sel');
-      document.querySelectorAll('.wb-tool-btn').forEach(b=>b.classList.toggle('active', b.dataset.wbTool==='pen'));
-    });
-  });
-  document.querySelectorAll('[data-wb-tool]').forEach(el=>{
-    el.addEventListener('click', ()=>{
-      state.wbTool = el.dataset.wbTool;
-      document.querySelectorAll('.wb-tool-btn').forEach(b=>b.classList.remove('active'));
-      el.classList.add('active');
-    });
-  });
-  const wbSizeInput = document.getElementById('wbSize');
-  if(wbSizeInput){
-    wbSizeInput.addEventListener('input', ()=>{ state.wbWidth = Number(wbSizeInput.value); });
-  }
-  const wbClearBtn = document.getElementById('wbClearBtn');
-  if(wbClearBtn){
-    wbClearBtn.addEventListener('click', async ()=>{
-      if(!confirm('Clear the whiteboard for everyone?')) return;
-      try{ await clearWhiteboardFn(state.activeClassId); }catch(e){ console.error('Clear whiteboard failed', e); }
-    });
-  }
 
   const overlay = document.getElementById('overlay');
   overlay.onclick = (e)=>{ if(e.target===overlay) closeModal(); };
