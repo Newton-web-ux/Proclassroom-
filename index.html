@@ -250,6 +250,12 @@
     padding:4px 10px; font-size:11px; font-weight:700;
   }
   .cb-code-btn:hover{ background:rgba(255,255,255,.3); }
+  .cb-delete-btn{
+    display:inline-flex; align-items:center; gap:6px; margin-top:12px; margin-left:10px;
+    background:rgba(166,55,59,.22); border:1px solid rgba(255,255,255,.25); color:#fff;
+    border-radius:20px; padding:6px 14px 6px 14px; font-size:12px; font-weight:700;
+  }
+  .cb-delete-btn:hover{ background:rgba(166,55,59,.4); }
 
   .tab-strip{
     display:flex; gap:4px; margin:18px 0 20px; border-bottom:1px solid var(--line-strong);
@@ -262,13 +268,22 @@
   .tab-btn:hover{ color:var(--ink); }
 
   .stream-compose{
-    display:flex; gap:12px; align-items:center; padding:14px 18px; background:var(--paper);
+    display:flex; gap:12px; align-items:flex-start; padding:14px 18px; background:var(--paper);
     border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:16px;
   }
+  .stream-compose .avatar{ margin-top:2px; }
+  .stream-compose-main{ flex:1; min-width:0; display:flex; flex-direction:column; gap:8px; }
   .stream-compose input{
-    flex:1; border:none; background:var(--parchment); border-radius:8px; padding:10px 12px;
+    width:100%; border:none; background:var(--parchment); border-radius:8px; padding:10px 12px;
     font-size:13.5px; outline:none; font-family:inherit;
   }
+  .stream-compose-foot{ display:flex; align-items:center; gap:10px; }
+  .stream-attach-btn{
+    display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
+    color:var(--ink-2); background:var(--parchment); border:1px solid var(--line-strong);
+    border-radius:7px; padding:6px 11px; cursor:pointer; flex-shrink:0;
+  }
+  .stream-attach-btn:hover{ border-color:var(--ochre); }
   .stream-item{
     background:var(--paper); border:1px solid var(--line); border-radius:var(--radius);
     padding:15px 18px; margin-bottom:12px; box-shadow:var(--shadow);
@@ -290,19 +305,26 @@
   .work-card h4{ margin:0 0 4px; font-size:14.5px; font-family:'Fraunces',serif; color:var(--ink); }
   .work-card .wc-meta{ font-size:12px; color:#7b8a80; }
   .work-card .wc-desc{ font-size:12.5px; color:var(--ink-2); margin-top:8px; line-height:1.5; }
-  .work-card .wc-attachments{ display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
-  .work-card .wc-attach-thumb{
+  .wc-attachments{ display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .wc-attach-item{ position:relative; display:inline-flex; }
+  .wc-attach-thumb{
     width:46px; height:46px; border-radius:7px; overflow:hidden;
     border:1px solid var(--line); display:block; flex-shrink:0;
   }
-  .work-card .wc-attach-thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
-  .work-card .wc-attach-chip{
+  .wc-attach-thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .wc-attach-chip{
     font-size:11px; font-weight:600; color:var(--ink-2);
     background:var(--parchment); border:1px solid var(--line); border-radius:6px;
     padding:5px 9px; max-width:170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
     display:inline-flex; align-items:center; gap:4px;
   }
-  .work-card .wc-attach-chip:hover{ border-color:var(--line-strong); }
+  .wc-attach-chip:hover{ border-color:var(--line-strong); }
+  .wc-attach-del{
+    position:absolute; top:-6px; right:-6px; width:18px; height:18px; border-radius:50%;
+    background:var(--red-pen); color:#fff; border:2px solid var(--paper); font-size:12px;
+    line-height:1; display:flex; align-items:center; justify-content:center; padding:0;
+  }
+  .wc-attach-del:hover{ background:#8a2d30; }
   .work-card .wc-foot{ display:flex; align-items:center; justify-content:space-between; margin-top:12px; gap:8px; }
   .wc-submissions{ margin-top:10px; }
   .wc-submissions summary{
@@ -344,23 +366,6 @@
   }
   table.gradebook input.grade-input:focus{ outline:2px solid var(--ochre-2); border-color:transparent; }
   .avg-cell{ font-family:'IBM Plex Mono',monospace; font-weight:700; color:var(--ink); }
-
-  /* ---------- Whiteboard ---------- */
-  .wb-panel{ background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; }
-  .wb-toolbar{ display:flex; flex-wrap:wrap; align-items:center; gap:16px; padding:12px 16px; border-bottom:1px solid var(--line); background:var(--parchment); }
-  .wb-tool-group{ display:flex; align-items:center; gap:8px; }
-  .wb-color-swatch{ width:22px;height:22px;border-radius:50%; border:2px solid transparent; padding:0; box-shadow: inset 0 0 0 1px rgba(31,58,46,.15); }
-  .wb-color-swatch.sel{ border-color:var(--ink); }
-  .wb-tool-btn{ padding:7px 12px; border-radius:7px; border:1px solid var(--line-strong); background:var(--paper); font-size:12.5px; font-weight:600; color:var(--ink-2); }
-  .wb-tool-btn.active{ background:var(--ink); color:var(--chalk); border-color:var(--ink); }
-  .wb-size-label{ font-size:11.5px; color:#5b6b60; font-weight:600; }
-  .wb-toolbar input[type="range"]{ width:100px; accent-color:var(--ochre); }
-  .wb-toolbar .btn{ margin-left:auto; }
-  .wb-live-badge{ font-size:10.5px; font-weight:700; color:#2A6B3E; display:inline-flex; align-items:center; gap:5px; }
-  .wb-live-badge::before{ content:''; width:7px;height:7px;border-radius:50%; background:#2A6B3E; }
-  .wb-viewer-note{ display:flex; align-items:center; justify-content:space-between; padding:10px 16px; font-size:12.5px; color:#5b6b60; border-bottom:1px solid var(--line); background:var(--parchment); }
-  .wb-canvas-wrap{ padding:14px; background:#fff; }
-  .wb-canvas-wrap canvas{ width:100%; height:auto; display:block; border-radius:8px; border:1px solid var(--line); background:#fff; touch-action:none; cursor:crosshair; }
 
   /* ---------- Calendar ---------- */
   .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
@@ -489,7 +494,7 @@ import {
   getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as fbSignOut
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
-  getFirestore, collection, addDoc, doc, updateDoc, onSnapshot,
+  getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, onSnapshot,
   query, where, arrayUnion, deleteField, serverTimestamp, getDocs
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
@@ -510,10 +515,6 @@ const provider = new GoogleAuthProvider();
 
 /* ---------------- App state ---------------- */
 const COLORS = ['#2C4A3B','#7A4B2E','#3C5A78','#7A3B4A','#4B4A78','#5C6B2C'];
-const WB_COLORS = ['#1F3A2E','#A6373B','#3C5A78','#C68E17','#4B4A78','#16281F'];
-const MAX_STROKES = 400;
-const WB_PUSH_INTERVAL_MS = 150;
-const WB_MIN_POINT_DIST = 2.5;
 
 function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,9); }
 
@@ -527,24 +528,15 @@ function genJoinCode(){
 const state = {
   view: 'dashboard',        // dashboard | calendar | class
   activeClassId: null,
-  classTab: 'stream',       // stream | classwork | people | grades | whiteboard
+  classTab: 'stream',       // stream | classwork | people | grades
   todayISO: new Date().toISOString().slice(0,10),
   user: null,                // { uid, name, email, picture }
   connStatus: 'idle',        // idle | connecting | live | error
-  wbColor: WB_COLORS[0],
-  wbTool: 'pen',             // pen | eraser
-  wbWidth: 4,
 };
 
 const db = { classes: [] };
 let ownedMap = {}, memberMap = {};
 let unsubOwned = null, unsubMember = null;
-
-/* ---- local (non-Firestore) whiteboard drawing session state ---- */
-let wbDrawing = false;
-let wbCurrentPoints = [];
-let wbCurrentId = null;
-let wbLastPushTime = 0;
 
 /* ---------------- Firestore helpers ---------------- */
 function docToClass(docSnap){
@@ -559,8 +551,7 @@ function docToClass(docSnap){
     assignments: d.assignments || [],
     grades: d.grades || {},
     stream: d.stream || [],
-    submissions: d.submissions || {},
-    whiteboard: d.whiteboard || { strokes: [], liveStroke: null }
+    submissions: d.submissions || {}
   };
 }
 
@@ -571,18 +562,7 @@ function mergeClasses(){
     state.view = 'dashboard'; state.activeClassId = null;
   }
   state.connStatus = 'live';
-
-  // If the whiteboard tab is already mounted for the class that just updated,
-  // just redraw the canvas in place instead of doing a full re-render. A full
-  // re-render would destroy and recreate the <canvas> element, which would
-  // interrupt an in-progress stroke (and drop pointer capture) for the teacher,
-  // and cause visible flicker for viewers.
-  const activeClass = state.activeClassId ? merged[state.activeClassId] : null;
-  if(state.view==='class' && state.classTab==='whiteboard' && activeClass && document.getElementById('wbCanvas')){
-    redrawWhiteboard(activeClass);
-  }else{
-    render();
-  }
+  render();
 }
 
 function listenClasses(){
@@ -611,10 +591,13 @@ async function createClassFn(name, section, room, color){
     ownerId: state.user.uid, ownerName: state.user.name, ownerEmail: state.user.email,
     joinCode: genJoinCode(),
     memberUids: [], students: [], assignments: [], grades: {}, stream: [],
-    whiteboard: { strokes: [], liveStroke: null },
     createdAt: serverTimestamp()
   });
   return ref.id;
+}
+
+async function deleteClassFn(classId){
+  await deleteDoc(doc(dbFire,'classes',classId));
 }
 
 async function joinClassByCode(codeRaw){
@@ -635,6 +618,26 @@ async function joinClassByCode(codeRaw){
 }
 
 function isImageType(type){ return !!type && type.startsWith('image/'); }
+
+/* Renders a row of attachment thumbnails/chips. When delAttrs is provided,
+   each attachment gets a small "x" badge; delAttrs(index) should return the
+   data-* attribute string identifying what to delete on click. */
+function renderAttachmentList(atts, delAttrs){
+  if(!atts || !atts.length) return '';
+  return `
+    <div class="wc-attachments">
+      ${atts.map((att,i)=>`
+        <div class="wc-attach-item">
+          ${isImageType(att.type)
+            ? `<a href="${att.url}" target="_blank" rel="noopener" class="wc-attach-thumb" title="${att.name}"><img src="${att.url}" alt="${att.name}" /></a>`
+            : `<a href="${att.url}" target="_blank" rel="noopener" class="wc-attach-chip" title="${att.name}">&#128206; ${att.name.length>18? att.name.slice(0,18)+'…':att.name}</a>`
+          }
+          ${delAttrs ? `<button type="button" class="wc-attach-del" title="Remove file" ${delAttrs(i)}>&times;</button>` : ''}
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
 
 const MAX_ATTACHMENT_BYTES = 700 * 1024; // ~700KB per file, keeps the Firestore 1MB doc limit safe
 
@@ -665,6 +668,16 @@ async function addAssignmentFn(classId, a){
   });
 }
 
+async function removeAssignmentAttachmentFn(classId, assignmentId, attIndex){
+  const c = getClass(classId);
+  if(!c) return;
+  const assignments = c.assignments.map(a=>{
+    if(a.id !== assignmentId) return a;
+    return { ...a, attachments: (a.attachments||[]).filter((_,i)=> i!==attIndex) };
+  });
+  await updateDoc(doc(dbFire,'classes',classId), { assignments });
+}
+
 async function submitAssignmentFn(classId, assignmentId, files, note){
   const attachments = files && files.length ? await encodeAttachments(files) : [];
   const fieldPath = `submissions.${assignmentId}.${state.user.uid}`;
@@ -678,17 +691,37 @@ async function submitAssignmentFn(classId, assignmentId, files, note){
   });
 }
 
+async function removeSubmissionAttachmentFn(classId, assignmentId, attIndex){
+  const c = getClass(classId);
+  const subsForA = c && c.submissions && c.submissions[assignmentId];
+  const mySub = subsForA ? subsForA[state.user.uid] : null;
+  if(!mySub) return;
+  const files = (mySub.files||[]).filter((_,i)=> i!==attIndex);
+  const fieldPath = `submissions.${assignmentId}.${state.user.uid}.files`;
+  await updateDoc(doc(dbFire,'classes',classId), { [fieldPath]: files });
+}
+
 async function addStudentFn(classId, name){
   await updateDoc(doc(dbFire,'classes',classId), {
     students: arrayUnion({ id: uid('s'), name })
   });
 }
 
-async function postAnnouncementFn(classId, text){
+async function postAnnouncementFn(classId, text, attachments){
   const time = new Date().toLocaleString('en', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
   await updateDoc(doc(dbFire,'classes',classId), {
-    stream: arrayUnion({ id: uid('p'), author: state.user.name, time, text })
+    stream: arrayUnion({ id: uid('p'), author: state.user.name, time, text, attachments: attachments || [] })
   });
+}
+
+async function removeStreamAttachmentFn(classId, postId, attIndex){
+  const c = getClass(classId);
+  if(!c) return;
+  const stream = c.stream.map(p=>{
+    if(p.id !== postId) return p;
+    return { ...p, attachments: (p.attachments||[]).filter((_,i)=> i!==attIndex) };
+  });
+  await updateDoc(doc(dbFire,'classes',classId), { stream });
 }
 
 async function updateGradeFn(classId, studentId, assignmentId, val){
@@ -698,36 +731,6 @@ async function updateGradeFn(classId, studentId, assignmentId, val){
   }else{
     await updateDoc(doc(dbFire,'classes',classId), { [fieldPath]: val });
   }
-}
-
-/* ---------------- Whiteboard Firestore helpers ----------------
-   Only the class owner (teacher) ever writes to the `whiteboard`
-   field — this matches the existing security rules, where a
-   non-owner update is only allowed if it touches memberUids /
-   students / stream / submissions. Students only ever read.
-------------------------------------------------------------- */
-async function pushLiveStroke(classId, strokeObj){
-  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.liveStroke': strokeObj });
-}
-
-async function commitStroke(classId, strokeObj){
-  const c = getClass(classId);
-  const existing = (c && c.whiteboard && c.whiteboard.strokes) || [];
-  if(existing.length >= MAX_STROKES){
-    // Keep the doc from growing unbounded / hitting the 1MB Firestore limit.
-    const trimmed = existing.slice(existing.length - (MAX_STROKES - 50));
-    trimmed.push(strokeObj);
-    await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.strokes': trimmed, 'whiteboard.liveStroke': null });
-  }else{
-    await updateDoc(doc(dbFire,'classes',classId), {
-      'whiteboard.strokes': arrayUnion(strokeObj),
-      'whiteboard.liveStroke': null
-    });
-  }
-}
-
-async function clearWhiteboardFn(classId){
-  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.strokes': [], 'whiteboard.liveStroke': null });
 }
 
 /* ---------------- Auth ---------------- */
@@ -857,113 +860,6 @@ function connLabel(){
   return map[state.connStatus] || map.idle;
 }
 
-/* ---------------- Whiteboard rendering / drawing ---------------- */
-function currentStrokeObj(){
-  return {
-    id: wbCurrentId,
-    points: wbCurrentPoints,
-    color: state.wbTool==='eraser' ? '#ffffff' : state.wbColor,
-    width: state.wbTool==='eraser' ? Math.max(state.wbWidth*3, 14) : state.wbWidth,
-    tool: state.wbTool
-  };
-}
-
-function getCanvasPoint(canvas, evt){
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-  return {
-    x: Math.round((evt.clientX - rect.left) * scaleX),
-    y: Math.round((evt.clientY - rect.top) * scaleY)
-  };
-}
-
-function drawStroke(ctx, stroke){
-  if(!stroke || !stroke.points || stroke.points.length===0) return;
-  const pts = stroke.points;
-  ctx.strokeStyle = stroke.color;
-  ctx.lineWidth = stroke.width;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.beginPath();
-  ctx.moveTo(pts[0].x, pts[0].y);
-  if(pts.length===1){
-    ctx.lineTo(pts[0].x+0.1, pts[0].y+0.1);
-  }else{
-    for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
-  }
-  ctx.stroke();
-}
-
-function redrawWhiteboard(c){
-  const canvas = document.getElementById('wbCanvas');
-  if(!canvas || !c) return;
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0,0,canvas.width,canvas.height);
-  const wb = c.whiteboard || {};
-  (wb.strokes||[]).forEach(s=> drawStroke(ctx, s));
-  // Draw the remote in-progress stroke (from Firestore) unless it's our own
-  // local stroke, which we draw fresh below from the live local buffer.
-  if(wb.liveStroke && !(wbDrawing && wb.liveStroke.id === wbCurrentId)){
-    drawStroke(ctx, wb.liveStroke);
-  }
-  if(wbDrawing && wbCurrentPoints.length){
-    drawStroke(ctx, currentStrokeObj());
-  }
-}
-
-function initWhiteboardCanvas(c){
-  const canvas = document.getElementById('wbCanvas');
-  if(!canvas || !c) return;
-  redrawWhiteboard(c);
-
-  const teacher = isTeacher(c);
-  if(!teacher) return; // read-only viewer — nothing to bind
-
-  canvas.addEventListener('pointerdown', (e)=>{
-    e.preventDefault();
-    canvas.setPointerCapture(e.pointerId);
-    wbDrawing = true;
-    wbCurrentId = uid('stroke');
-    wbCurrentPoints = [getCanvasPoint(canvas, e)];
-    wbLastPushTime = 0;
-  });
-
-  canvas.addEventListener('pointermove', (e)=>{
-    if(!wbDrawing) return;
-    const pt = getCanvasPoint(canvas, e);
-    const last = wbCurrentPoints[wbCurrentPoints.length-1];
-    if(Math.hypot(pt.x-last.x, pt.y-last.y) < WB_MIN_POINT_DIST) return;
-    wbCurrentPoints.push(pt);
-    const cls = getClass(state.activeClassId);
-    if(cls) redrawWhiteboard(cls);
-    const now = performance.now();
-    if(now - wbLastPushTime > WB_PUSH_INTERVAL_MS){
-      wbLastPushTime = now;
-      pushLiveStroke(state.activeClassId, currentStrokeObj()).catch(err=>console.error('Whiteboard live push failed', err));
-    }
-  });
-
-  const endStroke = async ()=>{
-    if(!wbDrawing) return;
-    wbDrawing = false;
-    const strokeObj = currentStrokeObj();
-    wbCurrentPoints = [];
-    try{
-      if(strokeObj.points.length > 1){
-        await commitStroke(state.activeClassId, strokeObj);
-      }else{
-        await pushLiveStroke(state.activeClassId, null);
-      }
-    }catch(err){ console.error('Whiteboard commit failed', err); }
-  };
-  canvas.addEventListener('pointerup', endStroke);
-  canvas.addEventListener('pointercancel', endStroke);
-  canvas.addEventListener('pointerleave', ()=>{ if(wbDrawing) endStroke(); });
-}
-
 /* ---------------- Rendering ---------------- */
 function render(){
   const app = document.getElementById('app');
@@ -975,9 +871,6 @@ function render(){
     </div>
   `;
   bindGlobalEvents();
-  if(state.view==='class' && state.classTab==='whiteboard'){
-    initWhiteboardCanvas(getClass(state.activeClassId));
-  }
 }
 
 function renderSidebar(){
@@ -1203,7 +1096,7 @@ function renderClass(){
   const c = getClass(state.activeClassId);
   if(!c) return `<div class="empty-state"><h4>Class not found</h4></div>`;
   const teacher = isTeacher(c);
-  const tabs = ['stream','classwork','people','grades','whiteboard'];
+  const tabs = ['stream','classwork','people','grades'];
   return `
     <div class="class-banner" style="--banner-color-1:${c.color};--banner-color-2:${c.color}dd">
       <div class="cb-sub">${c.section}</div>
@@ -1214,6 +1107,7 @@ function renderClass(){
           Class code: <b>${c.joinCode}</b>
           <button class="cb-code-btn" data-copy-code="${c.joinCode}">Copy</button>
         </div>
+        <button class="cb-delete-btn" data-delete-class="${c.id}" title="Delete this class">&#128465; Delete class</button>
       ` : ''}
     </div>
     <div class="tab-strip">
@@ -1223,7 +1117,6 @@ function renderClass(){
     ${state.classTab==='classwork' ? renderClasswork(c) : ''}
     ${state.classTab==='people' ? renderPeople(c) : ''}
     ${state.classTab==='grades' ? renderGrades(c) : ''}
-    ${state.classTab==='whiteboard' ? renderWhiteboard(c) : ''}
   `;
 }
 
@@ -1231,10 +1124,22 @@ function renderStream(c){
   return `
     <div class="stream-compose">
       <div class="avatar">${initials(state.user?.name)}</div>
-      <input type="text" id="streamInput" placeholder="Share an announcement with ${c.name}..." />
-      <button class="btn btn-primary" data-post-announcement="${c.id}">Post</button>
+      <div class="stream-compose-main">
+        <input type="text" id="streamInput" placeholder="Share an announcement with ${c.name}..." />
+        <div class="stream-compose-foot">
+          <label class="stream-attach-btn" title="Attach images or files">
+            &#128206; Attach
+            <input type="file" id="streamAttachInput" multiple accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip" hidden />
+          </label>
+          <span id="streamAttachSummary" class="field-note"></span>
+        </div>
+      </div>
+      <button class="btn btn-primary" data-post-announcement="${c.id}" style="align-self:flex-start;">Post</button>
     </div>
-    ${c.stream.length? c.stream.map(p=>`
+    ${c.stream.length? c.stream.map(p=>{
+      const atts = p.attachments || [];
+      const canDelete = isTeacher(c);
+      return `
       <div class="stream-item">
         <div class="si-head">
           <div class="mini-avatar">${initials(p.author)}</div>
@@ -1243,9 +1148,10 @@ function renderStream(c){
             <div class="si-time">${p.time}</div>
           </div>
         </div>
-        <div class="si-body">${p.text}</div>
+        ${p.text? `<div class="si-body">${p.text}</div>` : ''}
+        ${renderAttachmentList(atts, canDelete ? (i)=>`data-del-stream-att data-class="${c.id}" data-post="${p.id}" data-idx="${i}"` : null)}
       </div>
-    `).join('') : `<div class="empty-state"><div class="es-icon">&#128172;</div><h4>No announcements yet</h4><p>Post something to get the conversation started.</p></div>`}
+    `;}).join('') : `<div class="empty-state"><div class="es-icon">&#128172;</div><h4>No announcements yet</h4><p>Post something to get the conversation started.</p></div>`}
   `;
 }
 
@@ -1267,14 +1173,7 @@ function renderClasswork(c){
           <h4>${a.title}</h4>
           <div class="wc-meta">${a.points} points &middot; Due ${dt.mon} ${dt.day}</div>
           ${a.desc? `<div class="wc-desc">${a.desc}</div>` : ''}
-          ${atts.length? `
-            <div class="wc-attachments">
-              ${atts.map(att=> isImageType(att.type)
-                ? `<a href="${att.url}" target="_blank" rel="noopener" class="wc-attach-thumb" title="${att.name}"><img src="${att.url}" alt="${att.name}" /></a>`
-                : `<a href="${att.url}" target="_blank" rel="noopener" class="wc-attach-chip" title="${att.name}">&#128206; ${att.name.length>18? att.name.slice(0,18)+'…':att.name}</a>`
-              ).join('')}
-            </div>
-          ` : ''}
+          ${renderAttachmentList(atts, teacher ? (i)=>`data-del-assignment-att data-class="${c.id}" data-assignment="${a.id}" data-idx="${i}"` : null)}
           <div class="wc-foot">
             <span class="pill ${st.cls}">${st.text}</span>
             ${mySub ? `<span class="pill pill-ok">Submitted</span>` : ''}
@@ -1291,14 +1190,7 @@ function renderClasswork(c){
                   const student = c.students.find(s=>s.id===sid);
                   return `<div class="wc-sub-item">
                     <div class="wc-sub-name">${student? student.name : sub.studentName}</div>
-                    ${sub.files && sub.files.length? `
-                      <div class="wc-attachments">
-                        ${sub.files.map(f=> isImageType(f.type)
-                          ? `<a href="${f.url}" target="_blank" rel="noopener" class="wc-attach-thumb" title="${f.name}"><img src="${f.url}" alt="${f.name}" /></a>`
-                          : `<a href="${f.url}" target="_blank" rel="noopener" class="wc-attach-chip" title="${f.name}">&#128206; ${f.name.length>18? f.name.slice(0,18)+'…':f.name}</a>`
-                        ).join('')}
-                      </div>
-                    ` : ''}
+                    ${renderAttachmentList(sub.files, null)}
                     ${sub.note? `<div class="wc-sub-note">"${sub.note}"</div>` : ''}
                   </div>`;
                 }).join('') : `<div class="field-note">No submissions yet.</div>`}
@@ -1395,38 +1287,6 @@ function renderGrades(c){
   `;
 }
 
-function renderWhiteboard(c){
-  const teacher = isTeacher(c);
-  return `
-    <div class="wb-panel">
-      ${teacher ? `
-      <div class="wb-toolbar">
-        <div class="wb-tool-group">
-          ${WB_COLORS.map(col=>`<button class="wb-color-swatch ${col===state.wbColor && state.wbTool==='pen'?'sel':''}" style="background:${col}" data-wb-color="${col}" title="Pen color"></button>`).join('')}
-        </div>
-        <div class="wb-tool-group">
-          <button class="wb-tool-btn ${state.wbTool==='pen'?'active':''}" data-wb-tool="pen">&#9998; Pen</button>
-          <button class="wb-tool-btn ${state.wbTool==='eraser'?'active':''}" data-wb-tool="eraser">&#9003; Eraser</button>
-        </div>
-        <div class="wb-tool-group">
-          <span class="wb-size-label">Size</span>
-          <input type="range" id="wbSize" min="2" max="24" value="${state.wbWidth}" />
-        </div>
-        <button class="btn btn-ghost" id="wbClearBtn">Clear board</button>
-      </div>
-      ` : `
-      <div class="wb-viewer-note">
-        <span>Watching ${c.ownerName}'s live whiteboard</span>
-        <span class="wb-live-badge">Live</span>
-      </div>
-      `}
-      <div class="wb-canvas-wrap">
-        <canvas id="wbCanvas" width="1200" height="640"></canvas>
-      </div>
-    </div>
-  `;
-}
-
 /* ---------------- Modals ---------------- */
 function openModal(type, preset, presetAssignment){
   const overlay = document.getElementById('overlay');
@@ -1485,14 +1345,7 @@ function openModal(type, preset, presetAssignment){
         <div class="modal-body">
           ${mySub ? `
             <div class="field-note">You submitted ${mySub.files.length} file(s) on ${new Date(mySub.submittedAt).toLocaleString()}. Uploading again will replace this submission.</div>
-            ${mySub.files.length? `
-              <div class="wc-attachments">
-                ${mySub.files.map(f=> isImageType(f.type)
-                  ? `<a href="${f.url}" target="_blank" rel="noopener" class="wc-attach-thumb" title="${f.name}"><img src="${f.url}" alt="${f.name}" /></a>`
-                  : `<a href="${f.url}" target="_blank" rel="noopener" class="wc-attach-chip" title="${f.name}">&#128206; ${f.name}</a>`
-                ).join('')}
-              </div>
-            ` : ''}
+            ${renderAttachmentList(mySub.files, (i)=>`data-del-submission-att data-class="${c.id}" data-assignment="${a.id}" data-idx="${i}"`)}
           ` : ''}
           <div class="field">
             <label>Upload your answer (PDF, PNG, or Word doc)</label>
@@ -1595,14 +1448,65 @@ function bindGlobalEvents(){
       }catch(e){ console.error('Copy failed', e); }
     });
   });
+  document.querySelectorAll('[data-delete-class]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      const cid = el.dataset.deleteClass;
+      const c = getClass(cid);
+      const name = c ? c.name : 'this class';
+      if(!confirm(`Delete "${name}" permanently? This removes all its assignments, grades, stream posts, and submissions. This cannot be undone.`)) return;
+      const original = el.textContent;
+      el.disabled = true;
+      el.textContent = 'Deleting…';
+      try{
+        await deleteClassFn(cid);
+        state.view = 'dashboard'; state.activeClassId = null;
+        render();
+      }catch(e){
+        console.error('Delete class failed', e);
+        el.disabled = false;
+        el.textContent = original;
+        alert('Could not delete the class. Please try again.');
+      }
+    });
+  });
+  const streamAttachInput = document.getElementById('streamAttachInput');
+  if(streamAttachInput){
+    streamAttachInput.addEventListener('change', ()=>{
+      const summary = document.getElementById('streamAttachSummary');
+      const n = streamAttachInput.files.length;
+      if(summary) summary.textContent = n ? `${n} file${n>1?'s':''} attached` : '';
+    });
+  }
   document.querySelectorAll('[data-post-announcement]').forEach(el=>{
     el.addEventListener('click', async ()=>{
       const cid = el.dataset.postAnnouncement;
       const input = document.getElementById('streamInput');
+      const attachInput = document.getElementById('streamAttachInput');
       const text = input.value.trim();
-      if(!text) return;
-      input.value = '';
-      try{ await postAnnouncementFn(cid, text); }catch(e){ console.error(e); }
+      const files = (attachInput && attachInput.files) ? Array.from(attachInput.files) : [];
+      if(!text && !files.length) return;
+      const originalLabel = el.textContent;
+      el.disabled = true;
+      try{
+        let attachments = [];
+        if(files.length){
+          el.textContent = 'Encoding files…';
+          attachments = await encodeAttachments(files);
+        }
+        el.textContent = 'Posting…';
+        await postAnnouncementFn(cid, text, attachments);
+        input.value = '';
+        if(attachInput) attachInput.value = '';
+        const summary = document.getElementById('streamAttachSummary');
+        if(summary) summary.textContent = '';
+      }catch(e){
+        console.error('Post announcement failed', e);
+        const summary = document.getElementById('streamAttachSummary');
+        if(summary){ summary.style.color = 'var(--red-pen)'; summary.textContent = e.message || 'Could not post.'; }
+      }finally{
+        el.disabled = false;
+        el.textContent = originalLabel;
+      }
     });
   });
   document.querySelectorAll('[data-grade-cell]').forEach(el=>{
@@ -1613,37 +1517,6 @@ function bindGlobalEvents(){
     });
   });
 
-  // Whiteboard toolbar (teacher only — element only exists when isTeacher(c) is true).
-  // These update local UI state directly (no full render()) so the canvas
-  // element — and any in-progress stroke / pointer capture on it — is never disturbed.
-  document.querySelectorAll('[data-wb-color]').forEach(el=>{
-    el.addEventListener('click', ()=>{
-      state.wbColor = el.dataset.wbColor;
-      state.wbTool = 'pen';
-      document.querySelectorAll('.wb-color-swatch').forEach(s=>s.classList.remove('sel'));
-      el.classList.add('sel');
-      document.querySelectorAll('.wb-tool-btn').forEach(b=>b.classList.toggle('active', b.dataset.wbTool==='pen'));
-    });
-  });
-  document.querySelectorAll('[data-wb-tool]').forEach(el=>{
-    el.addEventListener('click', ()=>{
-      state.wbTool = el.dataset.wbTool;
-      document.querySelectorAll('.wb-tool-btn').forEach(b=>b.classList.remove('active'));
-      el.classList.add('active');
-    });
-  });
-  const wbSizeInput = document.getElementById('wbSize');
-  if(wbSizeInput){
-    wbSizeInput.addEventListener('input', ()=>{ state.wbWidth = Number(wbSizeInput.value); });
-  }
-  const wbClearBtn = document.getElementById('wbClearBtn');
-  if(wbClearBtn){
-    wbClearBtn.addEventListener('click', async ()=>{
-      if(!confirm('Clear the whiteboard for everyone?')) return;
-      try{ await clearWhiteboardFn(state.activeClassId); }catch(e){ console.error('Clear whiteboard failed', e); }
-    });
-  }
-
   const overlay = document.getElementById('overlay');
   overlay.onclick = (e)=>{ if(e.target===overlay) closeModal(); };
 }
@@ -1651,6 +1524,35 @@ function bindGlobalEvents(){
 // Delegated events for modal (modal content re-renders independently of the main app)
 document.addEventListener('click', async (e)=>{
   if(e.target.matches('[data-close]')) closeModal();
+
+  if(e.target.matches('[data-del-assignment-att]')){
+    const btn = e.target;
+    const { class: cid, assignment: aid, idx } = btn.dataset;
+    if(!confirm('Remove this file from the assignment?')) return;
+    btn.disabled = true;
+    try{ await removeAssignmentAttachmentFn(cid, aid, Number(idx)); }
+    catch(err){ console.error('Remove assignment attachment failed', err); btn.disabled = false; }
+  }
+
+  if(e.target.matches('[data-del-stream-att]')){
+    const btn = e.target;
+    const { class: cid, post: pid, idx } = btn.dataset;
+    if(!confirm('Remove this file from the post?')) return;
+    btn.disabled = true;
+    try{ await removeStreamAttachmentFn(cid, pid, Number(idx)); }
+    catch(err){ console.error('Remove stream attachment failed', err); btn.disabled = false; }
+  }
+
+  if(e.target.matches('[data-del-submission-att]')){
+    const btn = e.target;
+    const { class: cid, assignment: aid, idx } = btn.dataset;
+    if(!confirm('Remove this file from your submission?')) return;
+    btn.disabled = true;
+    try{
+      await removeSubmissionAttachmentFn(cid, aid, Number(idx));
+      openModal('submitWork', cid, aid); // refresh the modal with the updated file list
+    }catch(err){ console.error('Remove submission attachment failed', err); btn.disabled = false; }
+  }
 
   if(e.target.matches('[data-swatch]')){
     document.querySelectorAll('.swatch-opt').forEach(s=>s.classList.remove('sel'));
