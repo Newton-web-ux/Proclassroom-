@@ -2192,7 +2192,7 @@ function bindGlobalEvents(){
       try{ await undoStrokeFn(state.activeClassId, board.id, page.id); }catch(e){ console.error('Undo failed', e); }
     });
   }
- const wbRedoBtn = document.getElementById('wbRedoBtn');
+  const wbRedoBtn = document.getElementById('wbRedoBtn');
   if(wbRedoBtn){
     wbRedoBtn.addEventListener('click', async ()=>{
       const c = getClass(state.activeClassId);
