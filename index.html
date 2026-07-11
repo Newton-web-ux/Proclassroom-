@@ -2192,9 +2192,163 @@ function bindGlobalEvents(){
       try{ await undoStrokeFn(state.activeClassId, board.id, page.id); }catch(e){ console.error('Undo failed', e); }
     });
   }
-  const wbRedoBtn = document.getElementById('wbRedoBtn');
+ const wbRedoBtn = document.getElementById('wbRedoBtn');
   if(wbRedoBtn){
     wbRedoBtn.addEventListener('click', async ()=>{
       const c = getClass(state.activeClassId);
       const board = getBoard(c, state.wbOpenBoardId);
-      const page =
+      const page = getActivePageOfBoard(board);
+      if(!board || !page) return;
+      try{ await redoStrokeFn(state.activeClassId, board.id, page.id); }catch(e){ console.error('Redo failed', e); }
+    });
+  }
+  bindWhiteboardChromeEvents();
+
+  const overlay = document.getElementById('overlay');
+  overlay.onclick = (e)=>{ if(e.target===overlay) closeModal(); };
+}
+
+// Delegated events for modal (modal content re-renders independently of the main app)
+document.addEventListener('click', async (e)=>{
+  if(e.target.matches('[data-close]')) closeModal();
+
+  if(e.target.matches('[data-del-assignment-att]')){
+    const btn = e.target;
+    const { class: cid, assignment: aid, idx } = btn.dataset;
+    if(!confirm('Remove this file from the assignment?')) return;
+    btn.disabled = true;
+    try{ await removeAssignmentAttachmentFn(cid, aid, Number(idx)); }
+    catch(err){ console.error('Remove assignment attachment failed', err); btn.disabled = false; }
+  }
+
+  if(e.target.matches('[data-del-stream-att]')){
+    const btn = e.target;
+    const { class: cid, post: pid, idx } = btn.dataset;
+    if(!confirm('Remove this file from the post?')) return;
+    btn.disabled = true;
+    try{ await removeStreamAttachmentFn(cid, pid, Number(idx)); }
+    catch(err){ console.error('Remove stream attachment failed', err); btn.disabled = false; }
+  }
+
+  if(e.target.matches('[data-del-submission-att]')){
+    const btn = e.target;
+    const { class: cid, assignment: aid, idx } = btn.dataset;
+    if(!confirm('Remove this file from your submission?')) return;
+    btn.disabled = true;
+    try{
+      await removeSubmissionAttachmentFn(cid, aid, Number(idx));
+      openModal('submitWork', cid, aid); // refresh the modal with the updated file list
+    }catch(err){ console.error('Remove submission attachment failed', err); btn.disabled = false; }
+  }
+
+  if(e.target.matches('[data-swatch]')){
+    document.querySelectorAll('.swatch-opt').forEach(s=>s.classList.remove('sel'));
+    e.target.classList.add('sel');
+    document.getElementById('overlay').dataset.selectedColor = e.target.dataset.swatch;
+  }
+
+  if(e.target.matches('[data-save="newClass"]')){
+    const name = document.getElementById('mClassName').value.trim();
+    if(!name) return;
+    const section = document.getElementById('mSection').value.trim() || 'Section 1';
+    const room = document.getElementById('mRoom').value.trim() || 'TBD';
+    const color = document.getElementById('overlay').dataset.selectedColor || COLORS[0];
+    try{
+      const newId = await createClassFn(name, section, room, color);
+      closeModal();
+      state.view='class'; state.activeClassId = newId; state.classTab='stream';
+      render();
+    }catch(err){ console.error('Create class failed', err); }
+  }
+
+  if(e.target.matches('[data-save="joinClass"]')){
+    const codeInput = document.getElementById('mJoinCode');
+    const errEl = document.getElementById('joinError');
+    const res = await joinClassByCode(codeInput.value);
+    if(res.ok){
+      closeModal();
+      state.view='class'; state.activeClassId = res.classId; state.classTab='stream';
+      render();
+    }else{
+      errEl.style.display='block';
+      errEl.textContent = res.msg;
+    }
+  }
+
+  if(e.target.matches('[data-save="newAssignment"]')){
+    const titleEl = document.getElementById('mTitle');
+    if(!titleEl) return;
+    const title = titleEl.value.trim();
+    const cid = document.getElementById('mClass').value;
+    const due = document.getElementById('mDue').value || state.todayISO;
+    const points = Number(document.getElementById('mPoints').value) || 100;
+    const desc = document.getElementById('mDesc').value.trim();
+    const fileInput = document.getElementById('mAttachments');
+    const files = (fileInput && fileInput.files) ? Array.from(fileInput.files) : [];
+    if(!title || !cid) return;
+    const saveBtn = e.target;
+    const originalLabel = saveBtn.textContent;
+    saveBtn.disabled = true;
+    try{
+      let attachments = [];
+      if(files.length){
+        saveBtn.textContent = 'Encoding files…';
+        attachments = await encodeAttachments(files);
+      }
+      saveBtn.textContent = 'Saving…';
+      await addAssignmentFn(cid, { title, due, points, desc, attachments });
+      closeModal();
+      render();
+    }catch(err){
+      console.error('Add assignment failed', err);
+      const noteEl = document.querySelector('#modalBody .field-note');
+      if(noteEl){ noteEl.style.color = 'var(--red-pen)'; noteEl.textContent = err.message || 'Could not save assignment.'; }
+      saveBtn.disabled = false;
+      saveBtn.textContent = originalLabel;
+    }
+  }
+
+  if(e.target.matches('[data-save="submitWork"]')){
+    const cid = e.target.dataset.class, aid = e.target.dataset.assignment;
+    const fileInput = document.getElementById('mSubmitFiles');
+    const files = (fileInput && fileInput.files) ? Array.from(fileInput.files) : [];
+    const note = document.getElementById('mSubmitNote').value.trim();
+    const errNoteSelector = '#modalBody .field-note';
+    if(files.length===0 && !note){
+      const noteEl = document.querySelector(errNoteSelector);
+      if(noteEl){ noteEl.style.color = 'var(--red-pen)'; noteEl.textContent = 'Attach at least one file or add a note before submitting.'; }
+      return;
+    }
+    const saveBtn = e.target;
+    const originalLabel = saveBtn.textContent;
+    saveBtn.disabled = true;
+    try{
+      if(files.length){ saveBtn.textContent = 'Encoding files…'; }
+      await submitAssignmentFn(cid, aid, files, note);
+      closeModal();
+      render();
+    }catch(err){
+      console.error('Submit failed', err);
+      const noteEl = document.querySelector(errNoteSelector);
+      if(noteEl){ noteEl.style.color = 'var(--red-pen)'; noteEl.textContent = err.message || 'Could not submit.'; }
+      saveBtn.disabled = false;
+      saveBtn.textContent = originalLabel;
+    }
+  }
+
+  if(e.target.matches('[data-save="newStudent"]')){
+    const nameEl = document.getElementById('mStudentName');
+    if(!nameEl) return;
+    const name = nameEl.value.trim();
+    const cid = document.getElementById('mStudentClass').value;
+    if(!name || !cid) return;
+    try{
+      await addStudentFn(cid, name);
+      closeModal();
+      render();
+    }catch(err){ console.error('Add student failed', err); }
+  }
+});
+</script>
+</body>
+</html>
