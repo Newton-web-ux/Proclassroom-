@@ -611,6 +611,7 @@ const state = {
 const db = { classes: [] };
 let ownedMap = {}, memberMap = {};
 let unsubOwned = null, unsubMember = null;
+let ownedLoaded = false, memberLoaded = false;
 
 /* ---- local (non-Firestore) whiteboard drawing session state ---- */
 let wbDrawing = false;
@@ -661,7 +662,13 @@ function getActivePageOfBoard(board){ return board ? (board.pages.find(p=>p.id==
 function mergeClasses(){
   const merged = { ...memberMap, ...ownedMap };
   db.classes = Object.values(merged).sort((a,b)=> a.name.localeCompare(b.name));
-  if(state.activeClassId && !merged[state.activeClassId]){
+  // Only treat a missing active class as "really gone" once BOTH the owned
+  // and member listeners have delivered at least one snapshot. Firestore's
+  // two independent onSnapshot streams don't resolve in lockstep, so acting
+  // on a single stale/partial merge here was incorrectly bouncing the user
+  // back to the main Dashboard mid-session (e.g. while drawing, since every
+  // whiteboard write re-triggers the owned-classes listener).
+  if(ownedLoaded && memberLoaded && state.activeClassId && !merged[state.activeClassId]){
     state.view = 'dashboard'; state.activeClassId = null;
   }
   state.connStatus = 'live';
@@ -686,10 +693,16 @@ function mergeClasses(){
   // surrounding chrome in place instead of doing a full re-render. A full
   // re-render would destroy/recreate the <canvas>, interrupting an in-progress
   // stroke (and dropping pointer capture) for the teacher, and cause flicker
-  // for viewers.
-  if(state.view==='class' && state.classTab==='whiteboard' && state.wbView==='board' && activeClass && document.getElementById('wbCanvas')){
+  // for viewers. We also never let a full re-render happen while a stroke is
+  // actively being drawn (wbDrawing) — that mid-gesture DOM swap is what was
+  // causing drawing to silently stop and the whiteboard view to "reset".
+  const wbCanvasEl = document.getElementById('wbCanvas');
+  if(state.view==='class' && state.classTab==='whiteboard' && state.wbView==='board' && activeClass && wbCanvasEl){
     redrawWhiteboard(activeClass);
     syncWhiteboardChrome(activeClass);
+  }else if(wbDrawing && wbCanvasEl){
+    // Mid-stroke: skip the render entirely rather than risk tearing down the canvas.
+    // The chrome/state will catch up on the next snapshot once the stroke ends.
   }else{
     render();
   }
@@ -699,11 +712,13 @@ function listenClasses(){
   const uidVal = state.user.uid;
   if(unsubOwned) unsubOwned();
   if(unsubMember) unsubMember();
+  ownedLoaded = false; memberLoaded = false;
 
   const ownedQ = query(collection(dbFire,'classes'), where('ownerId','==',uidVal));
   unsubOwned = onSnapshot(ownedQ, snap=>{
     ownedMap = {};
     snap.forEach(d=> ownedMap[d.id] = docToClass(d));
+    ownedLoaded = true;
     mergeClasses();
   }, err=>{ console.error('owned listener error', err); state.connStatus='error'; render(); });
 
@@ -711,6 +726,7 @@ function listenClasses(){
   unsubMember = onSnapshot(memberQ, snap=>{
     memberMap = {};
     snap.forEach(d=> memberMap[d.id] = docToClass(d));
+    memberLoaded = true;
     mergeClasses();
   }, err=>{ console.error('member listener error', err); state.connStatus='error'; render(); });
 }
@@ -864,6 +880,14 @@ async function removeStreamAttachmentFn(classId, postId, attIndex){
    Shape: whiteboard: { activeBoardId, boards: [{ id, code, name, createdAt,
    activePageId, pages: [{ id, name, strokes, liveStroke }] }] }
 
+   IMPORTANT: Firestore does NOT support addressing individual elements of a
+   real array via dotted field paths in updateDoc() (e.g. "whiteboard.boards.2.pages.0.strokes").
+   That silently fails / gets rejected, which is what was breaking drawing —
+   the write would fail, Firestore would roll the local doc back, and the
+   board would appear to vanish mid-stroke. Every mutation below instead
+   rebuilds the whole `boards` array client-side and writes it back as a
+   single `whiteboard.boards` field, which Firestore supports fine.
+
    Undo/redo is a client-local buffer (per board+page, per browser tab) that
    pops/pushes onto the shared `strokes` array — keeps the synced data model
    simple while still giving the teacher standard undo/redo behavior.
@@ -898,7 +922,8 @@ async function switchWbPageFn(classId, boardId, pageId){
   const wb = getWhiteboard(c);
   const bIdx = boardIndex(wb, boardId);
   if(bIdx < 0) return;
-  await updateDoc(doc(dbFire,'classes',classId), { [`whiteboard.boards.${bIdx}.activePageId`]: pageId });
+  const boards = wb.boards.map((b,i)=> i===bIdx ? { ...b, activePageId: pageId } : b);
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards });
 }
 
 async function addWbPageFn(classId, boardId){
@@ -908,11 +933,8 @@ async function addWbPageFn(classId, boardId){
   if(bIdx < 0) return;
   const board = wb.boards[bIdx];
   const newPage = { id: uid('page'), name: 'Page ' + (board.pages.length+1), strokes:[], liveStroke:null };
-  const pages = [...board.pages, newPage];
-  await updateDoc(doc(dbFire,'classes',classId), {
-    [`whiteboard.boards.${bIdx}.pages`]: pages,
-    [`whiteboard.boards.${bIdx}.activePageId`]: newPage.id
-  });
+  const boards = wb.boards.map((b,i)=> i===bIdx ? { ...b, pages:[...b.pages, newPage], activePageId: newPage.id } : b);
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards });
 }
 
 async function deleteWbPageFn(classId, boardId, pageId){
@@ -924,10 +946,8 @@ async function deleteWbPageFn(classId, boardId, pageId){
   if(board.pages.length <= 1) return; // keep at least one page
   const pages = board.pages.filter(p=>p.id!==pageId);
   const activePageId = board.activePageId===pageId ? pages[0].id : board.activePageId;
-  await updateDoc(doc(dbFire,'classes',classId), {
-    [`whiteboard.boards.${bIdx}.pages`]: pages,
-    [`whiteboard.boards.${bIdx}.activePageId`]: activePageId
-  });
+  const boards = wb.boards.map((b,i)=> i===bIdx ? { ...b, pages, activePageId } : b);
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards });
   delete wbRedoStacks[redoKey(boardId, pageId)];
 }
 
@@ -938,7 +958,12 @@ async function pushLiveStroke(classId, boardId, pageId, strokeObj){
   if(bIdx < 0) return;
   const pIdx = pageIndexInBoard(wb.boards[bIdx], pageId);
   if(pIdx < 0) return;
-  await updateDoc(doc(dbFire,'classes',classId), { [`whiteboard.boards.${bIdx}.pages.${pIdx}.liveStroke`]: strokeObj });
+  const boards = wb.boards.map((b,bi)=>{
+    if(bi!==bIdx) return b;
+    const pages = b.pages.map((p,pi)=> pi===pIdx ? { ...p, liveStroke: strokeObj } : p);
+    return { ...b, pages };
+  });
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards });
 }
 
 async function commitStroke(classId, boardId, pageId, strokeObj){
@@ -955,10 +980,12 @@ async function commitStroke(classId, boardId, pageId, strokeObj){
     // Keep the doc from growing unbounded / hitting the 1MB Firestore limit.
     strokes = strokes.slice(strokes.length - (MAX_STROKES - 50));
   }
-  await updateDoc(doc(dbFire,'classes',classId), {
-    [`whiteboard.boards.${bIdx}.pages.${pIdx}.strokes`]: strokes,
-    [`whiteboard.boards.${bIdx}.pages.${pIdx}.liveStroke`]: null
+  const boards = wb.boards.map((b,bi)=>{
+    if(bi!==bIdx) return b;
+    const pages = b.pages.map((p,pi)=> pi===pIdx ? { ...p, strokes, liveStroke: null } : p);
+    return { ...b, pages };
   });
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards });
   wbRedoStacks[redoKey(boardId, pageId)] = []; // a fresh stroke invalidates redo history
 }
 
@@ -977,10 +1004,12 @@ async function undoStrokeFn(classId, boardId, pageId){
   const key = redoKey(boardId, pageId);
   if(!wbRedoStacks[key]) wbRedoStacks[key] = [];
   wbRedoStacks[key].push(removed);
-  await updateDoc(doc(dbFire,'classes',classId), {
-    [`whiteboard.boards.${bIdx}.pages.${pIdx}.strokes`]: strokes,
-    [`whiteboard.boards.${bIdx}.pages.${pIdx}.liveStroke`]: null
+  const boards = wb.boards.map((b,bi)=>{
+    if(bi!==bIdx) return b;
+    const pages = b.pages.map((p,pi)=> pi===pIdx ? { ...p, strokes, liveStroke: null } : p);
+    return { ...b, pages };
   });
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards });
 }
 
 async function redoStrokeFn(classId, boardId, pageId){
@@ -996,10 +1025,12 @@ async function redoStrokeFn(classId, boardId, pageId){
   if(!redoStack.length) return;
   const stroke = redoStack.pop();
   const strokes = [...(board.pages[pIdx].strokes||[]), stroke];
-  await updateDoc(doc(dbFire,'classes',classId), {
-    [`whiteboard.boards.${bIdx}.pages.${pIdx}.strokes`]: strokes,
-    [`whiteboard.boards.${bIdx}.pages.${pIdx}.liveStroke`]: null
+  const boards = wb.boards.map((b,bi)=>{
+    if(bi!==bIdx) return b;
+    const pages = b.pages.map((p,pi)=> pi===pIdx ? { ...p, strokes, liveStroke: null } : p);
+    return { ...b, pages };
   });
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards });
 }
 
 async function clearAllFn(classId, boardId, pageId){
@@ -1009,10 +1040,12 @@ async function clearAllFn(classId, boardId, pageId){
   if(bIdx < 0) return;
   const pIdx = pageIndexInBoard(wb.boards[bIdx], pageId);
   if(pIdx < 0) return;
-  await updateDoc(doc(dbFire,'classes',classId), {
-    [`whiteboard.boards.${bIdx}.pages.${pIdx}.strokes`]: [],
-    [`whiteboard.boards.${bIdx}.pages.${pIdx}.liveStroke`]: null
+  const boards = wb.boards.map((b,bi)=>{
+    if(bi!==bIdx) return b;
+    const pages = b.pages.map((p,pi)=> pi===pIdx ? { ...p, strokes: [], liveStroke: null } : p);
+    return { ...b, pages };
   });
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards });
   wbRedoStacks[redoKey(boardId, pageId)] = [];
 }
 
@@ -1065,7 +1098,7 @@ onAuthStateChanged(auth, (user)=>{
     if(unsubOwned) unsubOwned();
     if(unsubMember) unsubMember();
     state.user = null; state.view='dashboard'; state.activeClassId=null; state.connStatus='idle';
-    db.classes = []; ownedMap = {}; memberMap = {};
+    db.classes = []; ownedMap = {}; memberMap = {}; ownedLoaded = false; memberLoaded = false;
     document.getElementById('app').classList.add('login-hidden');
     document.getElementById('loginScreen').classList.remove('login-hidden');
   }
@@ -1218,7 +1251,7 @@ function redrawWhiteboard(c){
 function syncWhiteboardChrome(c){
   if(!c) return;
   const board = getBoard(c, state.wbOpenBoardId);
-  if(!board){ render(); return; } // board got deleted remotely — fall back to a full re-render
+  if(!board){ if(!wbDrawing) render(); return; } // board got deleted remotely — fall back to a full re-render (unless mid-stroke)
   const page = getActivePageOfBoard(board);
   const teacher = isTeacher(c);
   const wb = getWhiteboard(c);
@@ -2111,13 +2144,15 @@ function bindGlobalEvents(){
     el.addEventListener('click', async ()=>{
       const bid = el.dataset.wbOpenBoard;
       const c = getClass(state.activeClassId);
+      // Set local view state first (and render optimistically) so the UI
+      // doesn't flicker back to the whiteboard list while the Firestore
+      // write for "make this board live" is still in flight.
+      state.wbView = 'board'; state.wbOpenBoardId = bid;
+      if(!isTeacher(c)) state.wbFollowLive = false; // manually browsing a board
+      render();
       if(isTeacher(c)){
         try{ await openBoardLiveFn(state.activeClassId, bid); }catch(err){ console.error('Open board failed', err); }
-      }else{
-        state.wbFollowLive = false; // manually browsing a board
       }
-      state.wbView = 'board'; state.wbOpenBoardId = bid;
-      render();
     });
   });
   document.querySelectorAll('[data-wb-del-board]').forEach(el=>{
