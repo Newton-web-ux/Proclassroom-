@@ -367,6 +367,62 @@
   table.gradebook input.grade-input:focus{ outline:2px solid var(--ochre-2); border-color:transparent; }
   .avg-cell{ font-family:'IBM Plex Mono',monospace; font-weight:700; color:var(--ink); }
 
+  /* ---------- Whiteboard ---------- */
+  .wb-board-card{
+    background:var(--paper); border:1px solid var(--line); border-radius:var(--radius);
+    padding:16px 17px; box-shadow:var(--shadow); position:relative; display:flex; flex-direction:column;
+  }
+  .wb-board-card.live{ border-color:var(--ochre); box-shadow:0 0 0 2px rgba(198,142,23,.18), var(--shadow); }
+  .wb-live-tag{
+    position:absolute; top:12px; right:12px; font-size:10px; font-weight:700; color:#2A6B3E;
+    background:#E1EEE3; border-radius:20px; padding:3px 9px; text-transform:uppercase; letter-spacing:.03em;
+  }
+  .wb-live-tag.static{ position:static; margin-left:8px; }
+  .wb-board-foot{ display:flex; align-items:center; gap:8px; margin-top:12px; }
+  .wb-board-del{
+    width:32px; height:32px; border-radius:7px; border:1px solid var(--line-strong); background:var(--paper);
+    color:var(--red-pen); font-size:16px; line-height:1; flex-shrink:0;
+  }
+  .wb-board-del:hover{ background:#F6DEDF; border-color:var(--red-pen); }
+  .wb-panel{ background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; }
+  .wb-board-head{ display:flex; align-items:center; gap:14px; padding:12px 16px; border-bottom:1px solid var(--line); background:var(--parchment); flex-wrap:wrap; }
+  .wb-board-title{ display:flex; align-items:center; gap:8px; font-size:14px; color:var(--ink-2); }
+  .wb-board-code{ font-size:11.5px; color:#7b8a80; background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:2px 8px; }
+  .wb-board-head #wbJumpLiveBtn{ margin-left:auto; }
+  .wb-pages-strip{ display:flex; align-items:center; gap:6px; padding:10px 16px; border-bottom:1px solid var(--line); background:var(--paper); overflow-x:auto; }
+  .wb-page-tab{
+    display:flex; align-items:center; gap:6px; padding:6px 10px; border-radius:7px;
+    border:1px solid var(--line-strong); background:var(--parchment); font-size:12.5px; font-weight:600;
+    color:var(--ink-2); white-space:nowrap; flex-shrink:0;
+  }
+  .wb-page-tab.active{ background:var(--ink); color:var(--chalk); border-color:var(--ink); }
+  .wb-page-tab:hover{ border-color:var(--ochre); }
+  .wb-page-del{
+    display:inline-flex; align-items:center; justify-content:center; width:15px; height:15px;
+    border-radius:50%; font-size:11px; line-height:1; opacity:.7;
+  }
+  .wb-page-del:hover{ opacity:1; background:rgba(0,0,0,.15); }
+  .wb-page-add{
+    padding:6px 12px; border-radius:7px; border:1px dashed var(--line-strong); background:transparent;
+    font-size:12.5px; font-weight:600; color:#5b6b60; flex-shrink:0;
+  }
+  .wb-page-add:hover{ color:var(--ink); border-color:var(--ochre); }
+  .wb-toolbar{ display:flex; flex-wrap:wrap; align-items:center; gap:16px; padding:12px 16px; border-bottom:1px solid var(--line); background:var(--parchment); }
+  .wb-tool-group{ display:flex; align-items:center; gap:8px; }
+  .wb-color-swatch{ width:22px;height:22px;border-radius:50%; border:2px solid transparent; padding:0; box-shadow: inset 0 0 0 1px rgba(31,58,46,.15); }
+  .wb-color-swatch.sel{ border-color:var(--ink); }
+  .wb-tool-btn{ padding:7px 12px; border-radius:7px; border:1px solid var(--line-strong); background:var(--paper); font-size:12.5px; font-weight:600; color:var(--ink-2); }
+  .wb-tool-btn.active{ background:var(--ink); color:var(--chalk); border-color:var(--ink); }
+  .wb-tool-btn:disabled{ opacity:.4; cursor:default; }
+  .wb-size-label{ font-size:11.5px; color:#5b6b60; font-weight:600; }
+  .wb-toolbar input[type="range"]{ width:100px; accent-color:var(--ochre); }
+  .wb-toolbar .btn{ margin-left:auto; }
+  .wb-live-badge{ font-size:10.5px; font-weight:700; color:#2A6B3E; display:inline-flex; align-items:center; gap:5px; }
+  .wb-live-badge::before{ content:''; width:7px;height:7px;border-radius:50%; background:#2A6B3E; }
+  .wb-viewer-note{ display:flex; align-items:center; justify-content:space-between; padding:10px 16px; font-size:12.5px; color:#5b6b60; border-bottom:1px solid var(--line); background:var(--parchment); gap:10px; }
+  .wb-canvas-wrap{ padding:14px; background:#fff; }
+  .wb-canvas-wrap canvas{ width:100%; height:auto; display:block; border-radius:8px; border:1px solid var(--line); background:#fff; touch-action:none; cursor:crosshair; }
+
   /* ---------- Calendar ---------- */
   .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
   .cal-dow{ font-size:11px; text-transform:uppercase; color:#7b8a80; text-align:center; font-weight:700; padding-bottom:4px; }
@@ -515,6 +571,10 @@ const provider = new GoogleAuthProvider();
 
 /* ---------------- App state ---------------- */
 const COLORS = ['#2C4A3B','#7A4B2E','#3C5A78','#7A3B4A','#4B4A78','#5C6B2C'];
+const WB_COLORS = ['#1F3A2E','#A6373B','#3C5A78','#C68E17','#4B4A78','#16281F'];
+const MAX_STROKES = 400;
+const WB_PUSH_INTERVAL_MS = 150;
+const WB_MIN_POINT_DIST = 2.5;
 
 function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,9); }
 
@@ -525,20 +585,54 @@ function genJoinCode(){
   return s;
 }
 
+// Short unique code for a whiteboard "board" — its own id, distinct from the class join code.
+function genBoardCode(){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for(let i=0;i<5;i++) s += chars[Math.floor(Math.random()*chars.length)];
+  return 'WB-' + s;
+}
+
 const state = {
   view: 'dashboard',        // dashboard | calendar | class
   activeClassId: null,
-  classTab: 'stream',       // stream | classwork | people | grades
+  classTab: 'stream',       // stream | classwork | people | grades | whiteboard
   todayISO: new Date().toISOString().slice(0,10),
   user: null,                // { uid, name, email, picture }
   connStatus: 'idle',        // idle | connecting | live | error
+  wbView: 'dashboard',       // dashboard | board  (inside the Whiteboard tab)
+  wbOpenBoardId: null,       // which board is currently open in the local UI
+  wbFollowLive: true,        // students: auto-jump to whatever board/page the teacher has live
+  wbColor: WB_COLORS[0],
+  wbTool: 'pen',              // pen | eraser
+  wbWidth: 4,
 };
 
 const db = { classes: [] };
 let ownedMap = {}, memberMap = {};
 let unsubOwned = null, unsubMember = null;
 
+/* ---- local (non-Firestore) whiteboard drawing session state ---- */
+let wbDrawing = false;
+let wbCurrentPoints = [];
+let wbCurrentId = null;
+let wbLastPushTime = 0;
+const wbRedoStacks = {}; // "boardId:pageId" -> array of stroke objects (client-local, teacher-only)
+
 /* ---------------- Firestore helpers ---------------- */
+
+// Normalizes whatever is stored under `whiteboard` into the current shape:
+// { activeBoardId, boards: [{ id, code, name, createdAt, activePageId, pages:[{id,name,strokes,liveStroke}] }] }
+// Handles classes that have no whiteboard field yet (new/legacy classes).
+function normalizeWhiteboard(raw){
+  if(raw && Array.isArray(raw.boards) && raw.boards.length){
+    return raw;
+  }
+  const page = { id:'page_1', name:'Page 1', strokes:[], liveStroke:null };
+  const board = { id: uid('wbb'), code: genBoardCode(), name:'Board 1', createdAt: new Date().toISOString(), activePageId: page.id, pages:[page] };
+  return { activeBoardId: board.id, boards:[board] };
+}
+
 function docToClass(docSnap){
   const d = docSnap.data();
   return {
@@ -551,9 +645,18 @@ function docToClass(docSnap){
     assignments: d.assignments || [],
     grades: d.grades || {},
     stream: d.stream || [],
-    submissions: d.submissions || {}
+    submissions: d.submissions || {},
+    whiteboard: normalizeWhiteboard(d.whiteboard)
   };
 }
+
+function getWhiteboard(c){ return normalizeWhiteboard(c && c.whiteboard); }
+function getBoards(c){ return getWhiteboard(c).boards; }
+function boardIndex(wb, boardId){ return wb.boards.findIndex(b=>b.id===boardId); }
+function getBoard(c, boardId){ const wb=getWhiteboard(c); return wb.boards.find(b=>b.id===boardId) || null; }
+function getActiveBoard(c){ const wb=getWhiteboard(c); return wb.boards.find(b=>b.id===wb.activeBoardId) || wb.boards[0] || null; }
+function pageIndexInBoard(board, pageId){ return board.pages.findIndex(p=>p.id===pageId); }
+function getActivePageOfBoard(board){ return board ? (board.pages.find(p=>p.id===board.activePageId) || board.pages[0]) : null; }
 
 function mergeClasses(){
   const merged = { ...memberMap, ...ownedMap };
@@ -562,7 +665,34 @@ function mergeClasses(){
     state.view = 'dashboard'; state.activeClassId = null;
   }
   state.connStatus = 'live';
-  render();
+
+  const activeClass = state.activeClassId ? merged[state.activeClassId] : null;
+
+  // Students auto-follow whatever board/page the teacher currently has live,
+  // unless they've manually navigated away (wbFollowLive=false).
+  if(activeClass && !isTeacher(activeClass) && state.view==='class' && state.activeClassId===activeClass.id
+     && state.classTab==='whiteboard' && state.wbFollowLive){
+    const wb = getWhiteboard(activeClass);
+    if(wb.activeBoardId){
+      state.wbView = 'board';
+      state.wbOpenBoardId = wb.activeBoardId;
+    }else{
+      state.wbView = 'dashboard';
+      state.wbOpenBoardId = null;
+    }
+  }
+
+  // If the whiteboard canvas is already mounted, just redraw it and patch the
+  // surrounding chrome in place instead of doing a full re-render. A full
+  // re-render would destroy/recreate the <canvas>, interrupting an in-progress
+  // stroke (and dropping pointer capture) for the teacher, and cause flicker
+  // for viewers.
+  if(state.view==='class' && state.classTab==='whiteboard' && state.wbView==='board' && activeClass && document.getElementById('wbCanvas')){
+    redrawWhiteboard(activeClass);
+    syncWhiteboardChrome(activeClass);
+  }else{
+    render();
+  }
 }
 
 function listenClasses(){
@@ -591,6 +721,7 @@ async function createClassFn(name, section, room, color){
     ownerId: state.user.uid, ownerName: state.user.name, ownerEmail: state.user.email,
     joinCode: genJoinCode(),
     memberUids: [], students: [], assignments: [], grades: {}, stream: [],
+    whiteboard: normalizeWhiteboard(null),
     createdAt: serverTimestamp()
   });
   return ref.id;
@@ -722,6 +853,167 @@ async function removeStreamAttachmentFn(classId, postId, attIndex){
     return { ...p, attachments: (p.attachments||[]).filter((_,i)=> i!==attIndex) };
   });
   await updateDoc(doc(dbFire,'classes',classId), { stream });
+}
+
+/* ---------------- Whiteboard Firestore helpers ----------------
+   Only the class owner (teacher) ever draws / manages boards & pages —
+   this matches the existing security rules, where a non-owner update is
+   only allowed if it touches memberUids / students / stream / submissions.
+   Students only ever read (and, locally, pick which board/page to look at).
+
+   Shape: whiteboard: { activeBoardId, boards: [{ id, code, name, createdAt,
+   activePageId, pages: [{ id, name, strokes, liveStroke }] }] }
+
+   Undo/redo is a client-local buffer (per board+page, per browser tab) that
+   pops/pushes onto the shared `strokes` array — keeps the synced data model
+   simple while still giving the teacher standard undo/redo behavior.
+------------------------------------------------------------- */
+function redoKey(boardId, pageId){ return boardId + ':' + pageId; }
+
+async function createBoardFn(classId, name){
+  const c = getClass(classId);
+  const wb = getWhiteboard(c);
+  const page = { id: uid('page'), name:'Page 1', strokes:[], liveStroke:null };
+  const board = { id: uid('wbb'), code: genBoardCode(), name: name || ('Board ' + (wb.boards.length+1)), createdAt: new Date().toISOString(), activePageId: page.id, pages:[page] };
+  const boards = [...wb.boards, board];
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards, 'whiteboard.activeBoardId': board.id });
+  return board.id;
+}
+
+async function openBoardLiveFn(classId, boardId){
+  // Teacher opening a board makes it the "live" one broadcast to students.
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.activeBoardId': boardId });
+}
+
+async function deleteBoardFn(classId, boardId){
+  const c = getClass(classId);
+  const wb = getWhiteboard(c);
+  const boards = wb.boards.filter(b=>b.id!==boardId);
+  const activeBoardId = wb.activeBoardId===boardId ? (boards[0] ? boards[0].id : null) : wb.activeBoardId;
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards, 'whiteboard.activeBoardId': activeBoardId });
+}
+
+async function switchWbPageFn(classId, boardId, pageId){
+  const c = getClass(classId);
+  const wb = getWhiteboard(c);
+  const bIdx = boardIndex(wb, boardId);
+  if(bIdx < 0) return;
+  await updateDoc(doc(dbFire,'classes',classId), { [`whiteboard.boards.${bIdx}.activePageId`]: pageId });
+}
+
+async function addWbPageFn(classId, boardId){
+  const c = getClass(classId);
+  const wb = getWhiteboard(c);
+  const bIdx = boardIndex(wb, boardId);
+  if(bIdx < 0) return;
+  const board = wb.boards[bIdx];
+  const newPage = { id: uid('page'), name: 'Page ' + (board.pages.length+1), strokes:[], liveStroke:null };
+  const pages = [...board.pages, newPage];
+  await updateDoc(doc(dbFire,'classes',classId), {
+    [`whiteboard.boards.${bIdx}.pages`]: pages,
+    [`whiteboard.boards.${bIdx}.activePageId`]: newPage.id
+  });
+}
+
+async function deleteWbPageFn(classId, boardId, pageId){
+  const c = getClass(classId);
+  const wb = getWhiteboard(c);
+  const bIdx = boardIndex(wb, boardId);
+  if(bIdx < 0) return;
+  const board = wb.boards[bIdx];
+  if(board.pages.length <= 1) return; // keep at least one page
+  const pages = board.pages.filter(p=>p.id!==pageId);
+  const activePageId = board.activePageId===pageId ? pages[0].id : board.activePageId;
+  await updateDoc(doc(dbFire,'classes',classId), {
+    [`whiteboard.boards.${bIdx}.pages`]: pages,
+    [`whiteboard.boards.${bIdx}.activePageId`]: activePageId
+  });
+  delete wbRedoStacks[redoKey(boardId, pageId)];
+}
+
+async function pushLiveStroke(classId, boardId, pageId, strokeObj){
+  const c = getClass(classId);
+  const wb = getWhiteboard(c);
+  const bIdx = boardIndex(wb, boardId);
+  if(bIdx < 0) return;
+  const pIdx = pageIndexInBoard(wb.boards[bIdx], pageId);
+  if(pIdx < 0) return;
+  await updateDoc(doc(dbFire,'classes',classId), { [`whiteboard.boards.${bIdx}.pages.${pIdx}.liveStroke`]: strokeObj });
+}
+
+async function commitStroke(classId, boardId, pageId, strokeObj){
+  const c = getClass(classId);
+  const wb = getWhiteboard(c);
+  const bIdx = boardIndex(wb, boardId);
+  if(bIdx < 0) return;
+  const board = wb.boards[bIdx];
+  const pIdx = pageIndexInBoard(board, pageId);
+  if(pIdx < 0) return;
+  const existing = board.pages[pIdx].strokes || [];
+  let strokes = [...existing, strokeObj];
+  if(strokes.length > MAX_STROKES){
+    // Keep the doc from growing unbounded / hitting the 1MB Firestore limit.
+    strokes = strokes.slice(strokes.length - (MAX_STROKES - 50));
+  }
+  await updateDoc(doc(dbFire,'classes',classId), {
+    [`whiteboard.boards.${bIdx}.pages.${pIdx}.strokes`]: strokes,
+    [`whiteboard.boards.${bIdx}.pages.${pIdx}.liveStroke`]: null
+  });
+  wbRedoStacks[redoKey(boardId, pageId)] = []; // a fresh stroke invalidates redo history
+}
+
+async function undoStrokeFn(classId, boardId, pageId){
+  const c = getClass(classId);
+  const wb = getWhiteboard(c);
+  const bIdx = boardIndex(wb, boardId);
+  if(bIdx < 0) return;
+  const board = wb.boards[bIdx];
+  const pIdx = pageIndexInBoard(board, pageId);
+  if(pIdx < 0) return;
+  const page = board.pages[pIdx];
+  if(!page.strokes || !page.strokes.length) return;
+  const strokes = page.strokes.slice(0, -1);
+  const removed = page.strokes[page.strokes.length - 1];
+  const key = redoKey(boardId, pageId);
+  if(!wbRedoStacks[key]) wbRedoStacks[key] = [];
+  wbRedoStacks[key].push(removed);
+  await updateDoc(doc(dbFire,'classes',classId), {
+    [`whiteboard.boards.${bIdx}.pages.${pIdx}.strokes`]: strokes,
+    [`whiteboard.boards.${bIdx}.pages.${pIdx}.liveStroke`]: null
+  });
+}
+
+async function redoStrokeFn(classId, boardId, pageId){
+  const c = getClass(classId);
+  const wb = getWhiteboard(c);
+  const bIdx = boardIndex(wb, boardId);
+  if(bIdx < 0) return;
+  const board = wb.boards[bIdx];
+  const pIdx = pageIndexInBoard(board, pageId);
+  if(pIdx < 0) return;
+  const key = redoKey(boardId, pageId);
+  const redoStack = wbRedoStacks[key] || [];
+  if(!redoStack.length) return;
+  const stroke = redoStack.pop();
+  const strokes = [...(board.pages[pIdx].strokes||[]), stroke];
+  await updateDoc(doc(dbFire,'classes',classId), {
+    [`whiteboard.boards.${bIdx}.pages.${pIdx}.strokes`]: strokes,
+    [`whiteboard.boards.${bIdx}.pages.${pIdx}.liveStroke`]: null
+  });
+}
+
+async function clearAllFn(classId, boardId, pageId){
+  const c = getClass(classId);
+  const wb = getWhiteboard(c);
+  const bIdx = boardIndex(wb, boardId);
+  if(bIdx < 0) return;
+  const pIdx = pageIndexInBoard(wb.boards[bIdx], pageId);
+  if(pIdx < 0) return;
+  await updateDoc(doc(dbFire,'classes',classId), {
+    [`whiteboard.boards.${bIdx}.pages.${pIdx}.strokes`]: [],
+    [`whiteboard.boards.${bIdx}.pages.${pIdx}.liveStroke`]: null
+  });
+  wbRedoStacks[redoKey(boardId, pageId)] = [];
 }
 
 async function updateGradeFn(classId, studentId, assignmentId, val){
@@ -860,6 +1152,182 @@ function connLabel(){
   return map[state.connStatus] || map.idle;
 }
 
+/* ---------------- Whiteboard rendering / drawing ---------------- */
+function currentStrokeObj(){
+  return {
+    id: wbCurrentId,
+    points: wbCurrentPoints,
+    color: state.wbTool==='eraser' ? '#ffffff' : state.wbColor,
+    width: state.wbTool==='eraser' ? Math.max(state.wbWidth*3, 14) : state.wbWidth,
+    tool: state.wbTool
+  };
+}
+
+function getCanvasPoint(canvas, evt){
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return {
+    x: Math.round((evt.clientX - rect.left) * scaleX),
+    y: Math.round((evt.clientY - rect.top) * scaleY)
+  };
+}
+
+function drawStroke(ctx, stroke){
+  if(!stroke || !stroke.points || stroke.points.length===0) return;
+  const pts = stroke.points;
+  ctx.strokeStyle = stroke.color;
+  ctx.lineWidth = stroke.width;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  if(pts.length===1){
+    ctx.lineTo(pts[0].x+0.1, pts[0].y+0.1);
+  }else{
+    for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+  }
+  ctx.stroke();
+}
+
+function redrawWhiteboard(c){
+  const canvas = document.getElementById('wbCanvas');
+  if(!canvas || !c) return;
+  const board = getBoard(c, state.wbOpenBoardId);
+  const page = getActivePageOfBoard(board);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  if(!page) return;
+  (page.strokes||[]).forEach(s=> drawStroke(ctx, s));
+  // Draw the remote in-progress stroke (from Firestore) unless it's our own
+  // local stroke, which we draw fresh below from the live local buffer.
+  if(page.liveStroke && !(wbDrawing && page.liveStroke.id === wbCurrentId)){
+    drawStroke(ctx, page.liveStroke);
+  }
+  if(wbDrawing && wbCurrentPoints.length){
+    drawStroke(ctx, currentStrokeObj());
+  }
+}
+
+/* Lightweight patch of the whiteboard "chrome" (page tabs, undo/redo
+   disabled state, live-follow banner) without touching the <canvas>
+   element itself, so an in-progress stroke / pointer capture is never
+   interrupted by a Firestore snapshot update. */
+function syncWhiteboardChrome(c){
+  if(!c) return;
+  const board = getBoard(c, state.wbOpenBoardId);
+  if(!board){ render(); return; } // board got deleted remotely — fall back to a full re-render
+  const page = getActivePageOfBoard(board);
+  const teacher = isTeacher(c);
+  const wb = getWhiteboard(c);
+
+  const stripEl = document.querySelector('.wb-pages-strip');
+  if(stripEl){
+    stripEl.innerHTML = board.pages.map(p=>`
+      <button class="wb-page-tab ${p.id===board.activePageId?'active':''}" ${teacher?`data-wb-page="${p.id}"`:''}>
+        <span>${p.name}</span>
+        ${teacher && board.pages.length>1 ? `<span class="wb-page-del" data-wb-del-page="${p.id}" title="Delete page">&times;</span>` : ''}
+      </button>
+    `).join('') + (teacher? `<button class="wb-page-add" id="wbAddPage">+ Page</button>` : '');
+    bindWhiteboardChromeEvents();
+  }
+  const undoBtn = document.getElementById('wbUndoBtn');
+  if(undoBtn) undoBtn.disabled = !(page && page.strokes && page.strokes.length);
+  const redoBtn = document.getElementById('wbRedoBtn');
+  if(redoBtn) redoBtn.disabled = !(page && wbRedoStacks[redoKey(board.id, page.id)] && wbRedoStacks[redoKey(board.id, page.id)].length);
+  const followBanner = document.getElementById('wbFollowBanner');
+  if(followBanner){
+    const isLive = wb.activeBoardId === board.id;
+    followBanner.textContent = isLive
+      ? `Watching ${c.ownerName}'s live whiteboard \u00b7 ${board.name} \u00b7 ${page ? page.name : ''}`
+      : `Viewing ${board.name} (not the teacher's current live board)`;
+  }
+}
+
+function bindWhiteboardChromeEvents(){
+  document.querySelectorAll('[data-wb-page]').forEach(el=>{
+    el.addEventListener('click', async (e)=>{
+      if(e.target.closest('[data-wb-del-page]')) return;
+      const pid = el.dataset.wbPage;
+      try{ await switchWbPageFn(state.activeClassId, state.wbOpenBoardId, pid); }catch(err){ console.error('Switch page failed', err); }
+    });
+  });
+  document.querySelectorAll('[data-wb-del-page]').forEach(el=>{
+    el.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      if(!confirm('Delete this page? This cannot be undone.')) return;
+      try{ await deleteWbPageFn(state.activeClassId, state.wbOpenBoardId, el.dataset.wbDelPage); }catch(err){ console.error('Delete page failed', err); }
+    });
+  });
+  const addBtn = document.getElementById('wbAddPage');
+  if(addBtn){
+    addBtn.addEventListener('click', async ()=>{
+      try{ await addWbPageFn(state.activeClassId, state.wbOpenBoardId); }catch(err){ console.error('Add page failed', err); }
+    });
+  }
+}
+
+function initWhiteboardCanvas(c){
+  const canvas = document.getElementById('wbCanvas');
+  if(!canvas || !c) return;
+  redrawWhiteboard(c);
+
+  const teacher = isTeacher(c);
+  if(!teacher) return; // read-only viewer — nothing to bind
+
+  canvas.addEventListener('pointerdown', (e)=>{
+    e.preventDefault();
+    const board = getBoard(c, state.wbOpenBoardId);
+    const page = getActivePageOfBoard(board);
+    if(!page) return;
+    canvas.setPointerCapture(e.pointerId);
+    wbDrawing = true;
+    wbCurrentId = uid('stroke');
+    wbCurrentPoints = [getCanvasPoint(canvas, e)];
+    wbLastPushTime = 0;
+  });
+
+  canvas.addEventListener('pointermove', (e)=>{
+    if(!wbDrawing) return;
+    const pt = getCanvasPoint(canvas, e);
+    const last = wbCurrentPoints[wbCurrentPoints.length-1];
+    if(Math.hypot(pt.x-last.x, pt.y-last.y) < WB_MIN_POINT_DIST) return;
+    wbCurrentPoints.push(pt);
+    const cls = getClass(state.activeClassId);
+    if(cls) redrawWhiteboard(cls);
+    const now = performance.now();
+    if(now - wbLastPushTime > WB_PUSH_INTERVAL_MS){
+      wbLastPushTime = now;
+      const board = getBoard(cls, state.wbOpenBoardId);
+      const page = getActivePageOfBoard(board);
+      if(page) pushLiveStroke(state.activeClassId, board.id, page.id, currentStrokeObj()).catch(err=>console.error('Whiteboard live push failed', err));
+    }
+  });
+
+  const endStroke = async ()=>{
+    if(!wbDrawing) return;
+    wbDrawing = false;
+    const strokeObj = currentStrokeObj();
+    wbCurrentPoints = [];
+    const cls = getClass(state.activeClassId);
+    const board = getBoard(cls, state.wbOpenBoardId);
+    const page = getActivePageOfBoard(board);
+    if(!page) return;
+    try{
+      if(strokeObj.points.length > 1){
+        await commitStroke(state.activeClassId, board.id, page.id, strokeObj);
+      }else{
+        await pushLiveStroke(state.activeClassId, board.id, page.id, null);
+      }
+    }catch(err){ console.error('Whiteboard commit failed', err); }
+  };
+  canvas.addEventListener('pointerup', endStroke);
+  canvas.addEventListener('pointercancel', endStroke);
+  canvas.addEventListener('pointerleave', ()=>{ if(wbDrawing) endStroke(); });
+}
+
 /* ---------------- Rendering ---------------- */
 function render(){
   const app = document.getElementById('app');
@@ -871,6 +1339,9 @@ function render(){
     </div>
   `;
   bindGlobalEvents();
+  if(state.view==='class' && state.classTab==='whiteboard' && state.wbView==='board'){
+    initWhiteboardCanvas(getClass(state.activeClassId));
+  }
 }
 
 function renderSidebar(){
@@ -1096,7 +1567,7 @@ function renderClass(){
   const c = getClass(state.activeClassId);
   if(!c) return `<div class="empty-state"><h4>Class not found</h4></div>`;
   const teacher = isTeacher(c);
-  const tabs = ['stream','classwork','people','grades'];
+  const tabs = ['stream','classwork','people','grades','whiteboard'];
   return `
     <div class="class-banner" style="--banner-color-1:${c.color};--banner-color-2:${c.color}dd">
       <div class="cb-sub">${c.section}</div>
@@ -1117,6 +1588,7 @@ function renderClass(){
     ${state.classTab==='classwork' ? renderClasswork(c) : ''}
     ${state.classTab==='people' ? renderPeople(c) : ''}
     ${state.classTab==='grades' ? renderGrades(c) : ''}
+    ${state.classTab==='whiteboard' ? renderWhiteboard(c) : ''}
   `;
 }
 
@@ -1287,6 +1759,100 @@ function renderGrades(c){
   `;
 }
 
+function renderWhiteboard(c){
+  if(state.wbView==='board' && state.wbOpenBoardId && getBoard(c, state.wbOpenBoardId)){
+    return renderWhiteboardBoard(c);
+  }
+  return renderWhiteboardDashboard(c);
+}
+
+function renderWhiteboardDashboard(c){
+  const teacher = isTeacher(c);
+  const wb = getWhiteboard(c);
+  return `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:10px;">
+      <div class="field-note">${wb.boards.length} board${wb.boards.length===1?'':'s'} in this class &middot; each has a unique board ID</div>
+      ${teacher? `<button class="btn btn-primary" id="wbNewBoardBtn">+ New board</button>` : ''}
+    </div>
+    <div class="card-grid">
+      ${wb.boards.length? wb.boards.map(b=>{
+        const isLive = wb.activeBoardId===b.id;
+        return `<div class="wb-board-card ${isLive?'live':''}">
+          ${isLive? `<span class="wb-live-tag">&#9679; Live</span>` : ''}
+          <div class="wc-icon">&#128200;</div>
+          <h4>${b.name}</h4>
+          <div class="wc-meta mono">${b.code}</div>
+          <div class="wc-meta">${b.pages.length} page${b.pages.length===1?'':'s'}</div>
+          <div class="wb-board-foot">
+            <button class="btn btn-ghost" data-wb-open-board="${b.id}" style="flex:1; justify-content:center;">${teacher? 'Open & present' : 'View'}</button>
+            ${teacher? `<button class="wb-board-del" data-wb-del-board="${b.id}" title="Delete board">&times;</button>` : ''}
+          </div>
+        </div>`;
+      }).join('') : `<div class="empty-state"><div class="es-icon">&#128200;</div><h4>No whiteboards yet</h4><p>${teacher? 'Create a board to start drawing live for your class.' : "Your teacher hasn't created a whiteboard yet."}</p></div>`}
+    </div>
+  `;
+}
+
+function renderWhiteboardBoard(c){
+  const teacher = isTeacher(c);
+  const wb = getWhiteboard(c);
+  const board = getBoard(c, state.wbOpenBoardId);
+  if(!board) return renderWhiteboardDashboard(c);
+  const page = getActivePageOfBoard(board);
+  const isLive = wb.activeBoardId === board.id;
+  const key = redoKey(board.id, page.id);
+  return `
+    <div class="wb-panel">
+      <div class="wb-board-head">
+        <button class="btn btn-ghost" id="wbBackBtn">&larr; Dashboard</button>
+        <div class="wb-board-title">
+          <b>${board.name}</b>
+          <span class="mono wb-board-code">${board.code}</span>
+          ${isLive? `<span class="wb-live-tag static">&#9679; Live</span>` : ''}
+        </div>
+        ${!teacher && !isLive ? `<button class="btn btn-ghost" id="wbJumpLiveBtn">Jump to live</button>` : ''}
+      </div>
+      <div class="wb-pages-strip">
+        ${board.pages.map(p=>`
+          <button class="wb-page-tab ${p.id===board.activePageId?'active':''}" ${teacher?`data-wb-page="${p.id}"`:''}>
+            <span>${p.name}</span>
+            ${teacher && board.pages.length>1 ? `<span class="wb-page-del" data-wb-del-page="${p.id}" title="Delete page">&times;</span>` : ''}
+          </button>
+        `).join('')}
+        ${teacher? `<button class="wb-page-add" id="wbAddPage">+ Page</button>` : ''}
+      </div>
+      ${teacher ? `
+      <div class="wb-toolbar">
+        <div class="wb-tool-group">
+          ${WB_COLORS.map(col=>`<button class="wb-color-swatch ${col===state.wbColor && state.wbTool==='pen'?'sel':''}" style="background:${col}" data-wb-color="${col}" title="Pen color"></button>`).join('')}
+        </div>
+        <div class="wb-tool-group">
+          <button class="wb-tool-btn ${state.wbTool==='pen'?'active':''}" data-wb-tool="pen">&#9998; Pen</button>
+          <button class="wb-tool-btn ${state.wbTool==='eraser'?'active':''}" data-wb-tool="eraser">&#9003; Eraser</button>
+        </div>
+        <div class="wb-tool-group">
+          <span class="wb-size-label">Thickness</span>
+          <input type="range" id="wbSize" min="2" max="24" value="${state.wbWidth}" />
+        </div>
+        <div class="wb-tool-group">
+          <button class="wb-tool-btn" id="wbUndoBtn" ${(page.strokes&&page.strokes.length)?'':'disabled'} title="Undo">&#8630; Undo</button>
+          <button class="wb-tool-btn" id="wbRedoBtn" ${(wbRedoStacks[key]&&wbRedoStacks[key].length)?'':'disabled'} title="Redo">&#8631; Redo</button>
+        </div>
+        <button class="btn btn-ghost" id="wbClearBtn">Clear all</button>
+      </div>
+      ` : `
+      <div class="wb-viewer-note">
+        <span id="wbFollowBanner">${isLive? `Watching ${c.ownerName}'s live whiteboard \u00b7 ${board.name} \u00b7 ${page.name}` : `Viewing ${board.name} (not the teacher's current live board)`}</span>
+        <span class="wb-live-badge">Live</span>
+      </div>
+      `}
+      <div class="wb-canvas-wrap">
+        <canvas id="wbCanvas" width="1200" height="640"></canvas>
+      </div>
+    </div>
+  `;
+}
+
 /* ---------------- Modals ---------------- */
 function openModal(type, preset, presetAssignment){
   const overlay = document.getElementById('overlay');
@@ -1429,7 +1995,19 @@ function bindGlobalEvents(){
     });
   });
   document.querySelectorAll('[data-classtab]').forEach(el=>{
-    el.addEventListener('click', ()=>{ state.classTab = el.dataset.classtab; render(); });
+    el.addEventListener('click', ()=>{
+      const tab = el.dataset.classtab;
+      state.classTab = tab;
+      if(tab === 'whiteboard'){
+        const c = getClass(state.activeClassId);
+        const wb = getWhiteboard(c);
+        const teacher = isTeacher(c);
+        if(!teacher) state.wbFollowLive = true;
+        if(wb.activeBoardId){ state.wbView = 'board'; state.wbOpenBoardId = wb.activeBoardId; }
+        else { state.wbView = 'dashboard'; state.wbOpenBoardId = null; }
+      }
+      render();
+    });
   });
   document.querySelectorAll('[data-modal]').forEach(el=>{
     el.addEventListener('click', ()=> openModal(el.dataset.modal, el.dataset.presetClass, el.dataset.presetAssignment));
@@ -1517,151 +2095,106 @@ function bindGlobalEvents(){
     });
   });
 
-  const overlay = document.getElementById('overlay');
-  overlay.onclick = (e)=>{ if(e.target===overlay) closeModal(); };
-}
-
-// Delegated events for modal (modal content re-renders independently of the main app)
-document.addEventListener('click', async (e)=>{
-  if(e.target.matches('[data-close]')) closeModal();
-
-  if(e.target.matches('[data-del-assignment-att]')){
-    const btn = e.target;
-    const { class: cid, assignment: aid, idx } = btn.dataset;
-    if(!confirm('Remove this file from the assignment?')) return;
-    btn.disabled = true;
-    try{ await removeAssignmentAttachmentFn(cid, aid, Number(idx)); }
-    catch(err){ console.error('Remove assignment attachment failed', err); btn.disabled = false; }
+  // ---- Whiteboard: dashboard controls ----
+  const wbNewBoardBtn = document.getElementById('wbNewBoardBtn');
+  if(wbNewBoardBtn){
+    wbNewBoardBtn.addEventListener('click', async ()=>{
+      wbNewBoardBtn.disabled = true;
+      try{
+        const boardId = await createBoardFn(state.activeClassId, null);
+        state.wbView = 'board'; state.wbOpenBoardId = boardId;
+        render();
+      }catch(err){ console.error('Create board failed', err); wbNewBoardBtn.disabled = false; }
+    });
   }
-
-  if(e.target.matches('[data-del-stream-att]')){
-    const btn = e.target;
-    const { class: cid, post: pid, idx } = btn.dataset;
-    if(!confirm('Remove this file from the post?')) return;
-    btn.disabled = true;
-    try{ await removeStreamAttachmentFn(cid, pid, Number(idx)); }
-    catch(err){ console.error('Remove stream attachment failed', err); btn.disabled = false; }
-  }
-
-  if(e.target.matches('[data-del-submission-att]')){
-    const btn = e.target;
-    const { class: cid, assignment: aid, idx } = btn.dataset;
-    if(!confirm('Remove this file from your submission?')) return;
-    btn.disabled = true;
-    try{
-      await removeSubmissionAttachmentFn(cid, aid, Number(idx));
-      openModal('submitWork', cid, aid); // refresh the modal with the updated file list
-    }catch(err){ console.error('Remove submission attachment failed', err); btn.disabled = false; }
-  }
-
-  if(e.target.matches('[data-swatch]')){
-    document.querySelectorAll('.swatch-opt').forEach(s=>s.classList.remove('sel'));
-    e.target.classList.add('sel');
-    document.getElementById('overlay').dataset.selectedColor = e.target.dataset.swatch;
-  }
-
-  if(e.target.matches('[data-save="newClass"]')){
-    const name = document.getElementById('mClassName').value.trim();
-    if(!name) return;
-    const section = document.getElementById('mSection').value.trim() || 'Section 1';
-    const room = document.getElementById('mRoom').value.trim() || 'TBD';
-    const color = document.getElementById('overlay').dataset.selectedColor || COLORS[0];
-    try{
-      const newId = await createClassFn(name, section, room, color);
-      closeModal();
-      state.view='class'; state.activeClassId = newId; state.classTab='stream';
-      render();
-    }catch(err){ console.error('Create class failed', err); }
-  }
-
-  if(e.target.matches('[data-save="joinClass"]')){
-    const codeInput = document.getElementById('mJoinCode');
-    const errEl = document.getElementById('joinError');
-    const res = await joinClassByCode(codeInput.value);
-    if(res.ok){
-      closeModal();
-      state.view='class'; state.activeClassId = res.classId; state.classTab='stream';
-      render();
-    }else{
-      errEl.style.display='block';
-      errEl.textContent = res.msg;
-    }
-  }
-
-  if(e.target.matches('[data-save="newAssignment"]')){
-    const titleEl = document.getElementById('mTitle');
-    if(!titleEl) return;
-    const title = titleEl.value.trim();
-    const cid = document.getElementById('mClass').value;
-    const due = document.getElementById('mDue').value || state.todayISO;
-    const points = Number(document.getElementById('mPoints').value) || 100;
-    const desc = document.getElementById('mDesc').value.trim();
-    const fileInput = document.getElementById('mAttachments');
-    const files = (fileInput && fileInput.files) ? Array.from(fileInput.files) : [];
-    if(!title || !cid) return;
-    const saveBtn = e.target;
-    const originalLabel = saveBtn.textContent;
-    saveBtn.disabled = true;
-    try{
-      let attachments = [];
-      if(files.length){
-        saveBtn.textContent = 'Encoding files…';
-        attachments = await encodeAttachments(files);
+  document.querySelectorAll('[data-wb-open-board]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      const bid = el.dataset.wbOpenBoard;
+      const c = getClass(state.activeClassId);
+      if(isTeacher(c)){
+        try{ await openBoardLiveFn(state.activeClassId, bid); }catch(err){ console.error('Open board failed', err); }
+      }else{
+        state.wbFollowLive = false; // manually browsing a board
       }
-      saveBtn.textContent = 'Saving…';
-      await addAssignmentFn(cid, { title, due, points, desc, attachments });
-      closeModal();
+      state.wbView = 'board'; state.wbOpenBoardId = bid;
       render();
-    }catch(err){
-      console.error('Add assignment failed', err);
-      const noteEl = document.querySelector('#modalBody .field-note');
-      if(noteEl){ noteEl.style.color = 'var(--red-pen)'; noteEl.textContent = err.message || 'Could not save assignment.'; }
-      saveBtn.disabled = false;
-      saveBtn.textContent = originalLabel;
-    }
+    });
+  });
+  document.querySelectorAll('[data-wb-del-board]').forEach(el=>{
+    el.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const bid = el.dataset.wbDelBoard;
+      if(!confirm('Delete this board and all its pages? This cannot be undone.')) return;
+      try{ await deleteBoardFn(state.activeClassId, bid); }catch(err){ console.error('Delete board failed', err); }
+    });
+  });
+
+  // ---- Whiteboard: board-view controls ----
+  const wbBackBtn = document.getElementById('wbBackBtn');
+  if(wbBackBtn){
+    wbBackBtn.addEventListener('click', ()=>{
+      state.wbView = 'dashboard'; state.wbOpenBoardId = null; state.wbFollowLive = false;
+      render();
+    });
+  }
+  const wbJumpLiveBtn = document.getElementById('wbJumpLiveBtn');
+  if(wbJumpLiveBtn){
+    wbJumpLiveBtn.addEventListener('click', ()=>{
+      const c = getClass(state.activeClassId);
+      const wb = getWhiteboard(c);
+      state.wbFollowLive = true;
+      state.wbView = 'board'; state.wbOpenBoardId = wb.activeBoardId;
+      render();
+    });
   }
 
-  if(e.target.matches('[data-save="submitWork"]')){
-    const cid = e.target.dataset.class, aid = e.target.dataset.assignment;
-    const fileInput = document.getElementById('mSubmitFiles');
-    const files = (fileInput && fileInput.files) ? Array.from(fileInput.files) : [];
-    const note = document.getElementById('mSubmitNote').value.trim();
-    const errNoteSelector = '#modalBody .field-note';
-    if(files.length===0 && !note){
-      const noteEl = document.querySelector(errNoteSelector);
-      if(noteEl){ noteEl.style.color = 'var(--red-pen)'; noteEl.textContent = 'Attach at least one file or add a note before submitting.'; }
-      return;
-    }
-    const saveBtn = e.target;
-    const originalLabel = saveBtn.textContent;
-    saveBtn.disabled = true;
-    try{
-      if(files.length){ saveBtn.textContent = 'Encoding files…'; }
-      await submitAssignmentFn(cid, aid, files, note);
-      closeModal();
-      render();
-    }catch(err){
-      console.error('Submit failed', err);
-      const noteEl = document.querySelector(errNoteSelector);
-      if(noteEl){ noteEl.style.color = 'var(--red-pen)'; noteEl.textContent = err.message || 'Could not submit.'; }
-      saveBtn.disabled = false;
-      saveBtn.textContent = originalLabel;
-    }
+  // ---- Whiteboard: drawing toolbar (teacher only). These update local UI
+  // state directly (no full render()) so the canvas element — and any
+  // in-progress stroke / pointer capture on it — is never disturbed.
+  document.querySelectorAll('[data-wb-color]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      state.wbColor = el.dataset.wbColor;
+      state.wbTool = 'pen';
+      document.querySelectorAll('.wb-color-swatch').forEach(s=>s.classList.remove('sel'));
+      el.classList.add('sel');
+      document.querySelectorAll('.wb-tool-btn').forEach(b=>b.classList.toggle('active', b.dataset.wbTool==='pen'));
+    });
+  });
+  document.querySelectorAll('[data-wb-tool]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      state.wbTool = el.dataset.wbTool;
+      document.querySelectorAll('.wb-tool-btn').forEach(b=>b.classList.remove('active'));
+      el.classList.add('active');
+    });
+  });
+  const wbSizeInput = document.getElementById('wbSize');
+  if(wbSizeInput){
+    wbSizeInput.addEventListener('input', ()=>{ state.wbWidth = Number(wbSizeInput.value); });
   }
-
-  if(e.target.matches('[data-save="newStudent"]')){
-    const nameEl = document.getElementById('mStudentName');
-    if(!nameEl) return;
-    const name = nameEl.value.trim();
-    const cid = document.getElementById('mStudentClass').value;
-    if(!name || !cid) return;
-    try{
-      await addStudentFn(cid, name);
-      closeModal();
-      render();
-    }catch(err){ console.error('Add student failed', err); }
+  const wbClearBtn = document.getElementById('wbClearBtn');
+  if(wbClearBtn){
+    wbClearBtn.addEventListener('click', async ()=>{
+      if(!confirm('Clear all drawing on this page for everyone?')) return;
+      const c = getClass(state.activeClassId);
+      const board = getBoard(c, state.wbOpenBoardId);
+      const page = getActivePageOfBoard(board);
+      if(!board || !page) return;
+      try{ await clearAllFn(state.activeClassId, board.id, page.id); }catch(e){ console.error('Clear all failed', e); }
+    });
   }
-});
-</script>
-</body>
-</html>
+  const wbUndoBtn = document.getElementById('wbUndoBtn');
+  if(wbUndoBtn){
+    wbUndoBtn.addEventListener('click', async ()=>{
+      const c = getClass(state.activeClassId);
+      const board = getBoard(c, state.wbOpenBoardId);
+      const page = getActivePageOfBoard(board);
+      if(!board || !page) return;
+      try{ await undoStrokeFn(state.activeClassId, board.id, page.id); }catch(e){ console.error('Undo failed', e); }
+    });
+  }
+  const wbRedoBtn = document.getElementById('wbRedoBtn');
+  if(wbRedoBtn){
+    wbRedoBtn.addEventListener('click', async ()=>{
+      const c = getClass(state.activeClassId);
+      const board = getBoard(c, state.wbOpenBoardId);
+      const page =
