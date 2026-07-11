@@ -4,6 +4,11 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Pro Classroom — Dashboard</title>
+<meta name="theme-color" content="#1F3A2E" />
+<meta name="description" content="Pro Classroom — a lightweight, Firebase-backed classroom dashboard." />
+<link rel="manifest" href="./manifest.json" />
+<link rel="icon" href="./icons/icon-192.png" />
+<link rel="apple-touch-icon" href="./icons/icon-192.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -515,17 +520,66 @@
   #googleBtn:hover{ background:var(--ink-2); }
   #googleBtn:disabled{ opacity:.6; cursor:default; }
   .login-hidden{ display:none !important; }
+
+  /* ---------- Loading screen ---------- */
+  #loadingScreen{
+    position:fixed; inset:0; z-index:200;
+    display:flex; align-items:center; justify-content:center;
+    background:
+      radial-gradient(circle at 15% 20%, rgba(198,142,23,.14), transparent 40%),
+      radial-gradient(circle at 85% 80%, rgba(31,58,46,.10), transparent 45%),
+      var(--parchment);
+    transition:opacity .35s ease, visibility .35s ease;
+  }
+  #loadingScreen.loading-hidden{ opacity:0; visibility:hidden; pointer-events:none; }
+  .loading-card{ display:flex; flex-direction:column; align-items:center; gap:16px; }
+  .loading-mark{
+    width:56px;height:56px;border-radius:14px;
+    background:linear-gradient(155deg, var(--ochre-2), var(--ochre));
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Fraunces',serif; font-weight:700; color:var(--ink-2); font-size:28px;
+    box-shadow:0 10px 30px rgba(198,142,23,.28);
+    animation: pc-pulse 1.6s ease-in-out infinite;
+  }
+  .loading-name{ font-family:'Fraunces',serif; font-size:17px; font-weight:600; color:var(--ink); }
+  .loading-spinner{
+    width:26px; height:26px; border-radius:50%;
+    border:3px solid var(--line-strong); border-top-color:var(--ochre);
+    animation: pc-spin .8s linear infinite;
+  }
+  @keyframes pc-spin{ to{ transform:rotate(360deg); } }
+  @keyframes pc-pulse{ 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.06); } }
+
+  /* ---------- Install app button ---------- */
+  .install-btn{
+    display:inline-flex; align-items:center; gap:7px;
+    background:transparent; border:1px solid rgba(198,142,23,.55); color:var(--ochre);
+    border-radius:20px; padding:6px 13px 6px 11px; font-size:12px; font-weight:700;
+  }
+  .install-btn:hover{ background:rgba(198,142,23,.1); }
+  .install-btn .ic{ font-size:13px; }
+  #loginInstallBtn{ margin-top:14px; }
+  .install-hidden{ display:none !important; }
 </style>
 </head>
 <body>
 
-<div id="loginScreen">
+<div id="loadingScreen">
+  <div class="loading-card">
+    <div class="loading-mark">P</div>
+    <div class="loading-name">Pro Classroom</div>
+    <div class="loading-spinner"></div>
+  </div>
+</div>
+
+<div id="loginScreen" class="login-hidden">
   <div class="login-card">
     <div class="mark">P</div>
     <h1>Welcome to Pro Classroom</h1>
     <p>Sign in with your Google account to open your classroom dashboard.</p>
     <button id="googleBtn" type="button">Sign in with Google</button>
     <div id="loginError" style="display:none; color:var(--red-pen); font-size:12.5px; margin-top:14px;"></div>
+    <button id="loginInstallBtn" type="button" class="install-btn install-hidden"><span class="ic">&#8681;</span> Install app</button>
     <div class="fineprint">Teachers can create classes and share a join code. Students use that code to join a class and see the teacher's stream, classwork, and their own grades. Data is stored securely in Firestore, scoped to your account.</div>
   </div>
 </div>
@@ -568,6 +622,62 @@ const fbApp = initializeApp(firebaseConfig);
 const auth = getAuth(fbApp);
 const dbFire = getFirestore(fbApp);
 const provider = new GoogleAuthProvider();
+
+/* ---------------- PWA: install prompt + service worker ---------------- */
+let deferredInstallPrompt = null;
+let pwaIsInstalled = false;
+
+function isRunningStandalone(){
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+function showInstallButtons(){
+  if(pwaIsInstalled || isRunningStandalone()) return;
+  document.querySelectorAll('.install-btn').forEach(btn=> btn.classList.remove('install-hidden'));
+}
+function hideInstallButtons(){
+  document.querySelectorAll('.install-btn').forEach(btn=> btn.classList.add('install-hidden'));
+}
+
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  showInstallButtons();
+});
+
+window.addEventListener('appinstalled', ()=>{
+  pwaIsInstalled = true;
+  deferredInstallPrompt = null;
+  hideInstallButtons();
+});
+
+async function triggerInstallPrompt(){
+  if(!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  try{ await deferredInstallPrompt.userChoice; }catch(e){ /* ignore */ }
+  deferredInstallPrompt = null;
+  hideInstallButtons();
+}
+
+// Static install button on the login card. The topbar install button (once
+// signed in) is bound in bindGlobalEvents(), since the topbar is re-rendered.
+document.getElementById('loginInstallBtn')?.addEventListener('click', triggerInstallPrompt);
+
+if(isRunningStandalone()) pwaIsInstalled = true;
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('./sw.js').catch(err=>{
+      console.warn('Service worker registration failed', err);
+    });
+  });
+}
+
+/* ---------------- Loading screen ---------------- */
+function hideLoadingScreen(){
+  const el = document.getElementById('loadingScreen');
+  if(el) el.classList.add('loading-hidden');
+}
 
 /* ---------------- App state ---------------- */
 const COLORS = ['#2C4A3B','#7A4B2E','#3C5A78','#7A3B4A','#4B4A78','#5C6B2C'];
@@ -1087,6 +1197,7 @@ function handleGoogleSignIn(){
 }
 
 onAuthStateChanged(auth, (user)=>{
+  hideLoadingScreen();
   if(user){
     state.user = { uid:user.uid, name: user.displayName || user.email, email: user.email, picture: user.photoURL || '' };
     document.getElementById('loginScreen').classList.add('login-hidden');
@@ -1101,6 +1212,7 @@ onAuthStateChanged(auth, (user)=>{
     db.classes = []; ownedMap = {}; memberMap = {}; ownedLoaded = false; memberLoaded = false;
     document.getElementById('app').classList.add('login-hidden');
     document.getElementById('loginScreen').classList.remove('login-hidden');
+    showInstallButtons();
   }
 });
 
@@ -1425,6 +1537,7 @@ function renderTopbar(){
     <div class="topbar-actions">
       <button class="btn btn-ghost" data-modal="newClass">+ Class</button>
       <button class="btn btn-primary" data-modal="newAssignment">+ Assignment</button>
+      <button id="topbarInstallBtn" class="install-btn install-hidden" type="button"><span class="ic">&#8681;</span> Install</button>
       <span id="syncIndicator" class="sync-indicator ${connLabel().cls}">${connLabel().text}</span>
       ${renderUserMenu()}
     </div>
@@ -2048,6 +2161,11 @@ function bindGlobalEvents(){
   document.querySelectorAll('[data-signout]').forEach(el=>{
     el.addEventListener('click', signOutUser);
   });
+  const topbarInstallBtn = document.getElementById('topbarInstallBtn');
+  if(topbarInstallBtn){
+    topbarInstallBtn.addEventListener('click', triggerInstallPrompt);
+    if(deferredInstallPrompt && !pwaIsInstalled && !isRunningStandalone()) topbarInstallBtn.classList.remove('install-hidden');
+  }
   document.querySelectorAll('[data-copy-code]').forEach(el=>{
     el.addEventListener('click', async ()=>{
       const code = el.dataset.copyCode;
