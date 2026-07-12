@@ -315,8 +315,9 @@
   .wc-attach-thumb{
     width:46px; height:46px; border-radius:7px; overflow:hidden;
     border:1px solid var(--line); display:block; flex-shrink:0;
+    padding:0; background:none; cursor:pointer;
   }
-  .wc-attach-thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .wc-attach-thumb img{ width:100%; height:100%; object-fit:cover; display:block; pointer-events:none; }
   .wc-attach-chip{
     font-size:11px; font-weight:600; color:var(--ink-2);
     background:var(--parchment); border:1px solid var(--line); border-radius:6px;
@@ -472,6 +473,30 @@
   .field-note{ font-size:12px; color:#7b8a80; }
   .field-error{ font-size:12.5px; color:var(--red-pen); display:none; }
 
+  /* ---------- Image lightbox ---------- */
+  .img-lightbox{
+    position:fixed; inset:0; background:rgba(15,26,20,.86); display:none;
+    align-items:center; justify-content:center; z-index:60; padding:32px;
+  }
+  .img-lightbox.show{ display:flex; }
+  .img-lightbox img{
+    max-width:100%; max-height:100%; border-radius:10px; box-shadow:0 20px 60px rgba(0,0,0,.4);
+    display:block; background:#fff;
+  }
+  .img-lightbox-close, .img-lightbox-download{
+    position:absolute; top:18px; width:38px; height:38px; border-radius:50%;
+    background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.3); color:#fff;
+    font-size:19px; line-height:1; display:flex; align-items:center; justify-content:center;
+  }
+  .img-lightbox-close{ right:20px; }
+  .img-lightbox-download{ right:66px; font-size:16px; }
+  .img-lightbox-close:hover, .img-lightbox-download:hover{ background:rgba(255,255,255,.24); }
+  .img-lightbox-name{
+    position:absolute; bottom:20px; left:50%; transform:translateX(-50%);
+    color:rgba(255,255,255,.85); font-size:12.5px; background:rgba(0,0,0,.35);
+    padding:6px 14px; border-radius:20px; max-width:80%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+
   .empty-state{ text-align:center; padding:50px 20px; color:#7b8a80; }
   .empty-state .es-icon{ font-size:32px; margin-bottom:10px; }
   .empty-state h4{ margin:0 0 6px; color:var(--ink); font-family:'Fraunces',serif; }
@@ -588,6 +613,13 @@
 
 <div class="overlay" id="overlay">
   <div class="modal" id="modalBody"></div>
+</div>
+
+<div class="img-lightbox" id="imgLightbox">
+  <button type="button" class="img-lightbox-close" id="imgLightboxClose" title="Close">&times;</button>
+  <a class="img-lightbox-download" id="imgLightboxDownload" title="Download" download>&#8681;</a>
+  <img id="imgLightboxImg" src="" alt="" />
+  <div class="img-lightbox-name" id="imgLightboxName"></div>
 </div>
 
 <script type="module">
@@ -886,8 +918,8 @@ function renderAttachmentList(atts, delAttrs){
       ${atts.map((att,i)=>`
         <div class="wc-attach-item">
           ${isImageType(att.type)
-            ? `<a href="${att.url}" target="_blank" rel="noopener" class="wc-attach-thumb" title="${att.name}"><img src="${att.url}" alt="${att.name}" /></a>`
-            : `<a href="${att.url}" target="_blank" rel="noopener" class="wc-attach-chip" title="${att.name}">&#128206; ${att.name.length>18? att.name.slice(0,18)+'…':att.name}</a>`
+            ? `<button type="button" class="wc-attach-thumb" data-view-image data-img-url="${att.url}" data-img-name="${att.name}" title="${att.name}"><img src="${att.url}" alt="${att.name}" /></button>`
+            : `<a href="${att.url}" download="${att.name}" class="wc-attach-chip" title="${att.name}">&#128206; ${att.name.length>18? att.name.slice(0,18)+'…':att.name}</a>`
           }
           ${delAttrs ? `<button type="button" class="wc-attach-del" title="Remove file" ${delAttrs(i)}>&times;</button>` : ''}
         </div>
@@ -2190,6 +2222,40 @@ function openModal(type, preset, presetAssignment){
 }
 function closeModal(){ document.getElementById('overlay').classList.remove('show'); }
 
+/* ---------------- Image lightbox ----------------
+   Clicking an image attachment used to open the raw base64 data: URL in a
+   new tab via <a target="_blank">, which many browsers either block or
+   just display as a giant URL string instead of rendering the image. This
+   in-app lightbox shows the image directly instead, and offers a proper
+   download link (data: URL + download attribute triggers a save instead of
+   a navigation, which browsers do support). */
+function openImageLightbox(url, name){
+  const lb = document.getElementById('imgLightbox');
+  const img = document.getElementById('imgLightboxImg');
+  const nameEl = document.getElementById('imgLightboxName');
+  const dlBtn = document.getElementById('imgLightboxDownload');
+  if(!lb || !img) return;
+  img.src = url;
+  img.alt = name || '';
+  if(nameEl) nameEl.textContent = name || '';
+  if(dlBtn){ dlBtn.href = url; dlBtn.setAttribute('download', name || 'image.png'); }
+  lb.classList.add('show');
+}
+function closeImageLightbox(){
+  const lb = document.getElementById('imgLightbox');
+  if(!lb) return;
+  lb.classList.remove('show');
+  const img = document.getElementById('imgLightboxImg');
+  if(img) img.src = '';
+}
+document.getElementById('imgLightboxClose')?.addEventListener('click', closeImageLightbox);
+document.getElementById('imgLightbox')?.addEventListener('click', (e)=>{
+  if(e.target.id === 'imgLightbox') closeImageLightbox();
+});
+document.addEventListener('keydown', (e)=>{
+  if(e.key === 'Escape') closeImageLightbox();
+});
+
 /* ---------------- Events ---------------- */
 function bindGlobalEvents(){
   document.querySelectorAll('[data-nav]').forEach(el=>{
@@ -2424,6 +2490,12 @@ function bindGlobalEvents(){
 // Delegated events for modal (modal content re-renders independently of the main app)
 document.addEventListener('click', async (e)=>{
   if(e.target.matches('[data-close]')) closeModal();
+
+  const viewImgBtn = e.target.closest('[data-view-image]');
+  if(viewImgBtn){
+    openImageLightbox(viewImgBtn.dataset.imgUrl, viewImgBtn.dataset.imgName);
+    return;
+  }
 
   if(e.target.matches('[data-del-assignment-att]')){
     const btn = e.target;
