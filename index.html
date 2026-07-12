@@ -428,6 +428,10 @@
   .wb-viewer-note{ display:flex; align-items:center; justify-content:space-between; padding:10px 16px; font-size:12.5px; color:#5b6b60; border-bottom:1px solid var(--line); background:var(--parchment); gap:10px; }
   .wb-canvas-wrap{ padding:14px; background:#fff; }
   .wb-canvas-wrap canvas{ width:100%; height:auto; display:block; border-radius:8px; border:1px solid var(--line); background:#fff; touch-action:none; cursor:crosshair; }
+  .wb-archive-note{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 16px; font-size:12px; color:#5b6b60; background:#FBEBD9; border-bottom:1px solid var(--line); }
+  .wb-archive-note button{ font-size:11.5px; font-weight:700; color:var(--ochre); background:none; border:1px solid var(--ochre); border-radius:20px; padding:4px 11px; }
+  .wb-archive-note button:hover{ background:rgba(198,142,23,.12); }
+  .wb-archive-note button:disabled{ opacity:.5; }
 
   /* ---------- Calendar ---------- */
   .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
@@ -650,6 +654,13 @@ const firebaseConfig = {
   appId: "1:675633102778:web:8f68a16e2c7384fd52a783"
 };
 
+/* ---------------- Drive sync backend (Google Apps Script) ----------------
+   Deploy Code.gs as a Web App ("Execute as: Me", "Who has access: Anyone"),
+   then paste the /exec URL here. Until this is set, attachment uploads and
+   whiteboard archiving fall back gracefully with a clear error instead of
+   silently failing. See Code.gs for the backend implementation. */
+const DRIVE_SYNC_URL = "https://script.google.com/macros/s/AKfycbxT0FQAqo6KYcPugrkFleuU3aU7MMJv2cfL4GVJDA6REEAy-bCUkCBJ3V2482qQAa5qzg/exec";
+
 const fbApp = initializeApp(firebaseConfig);
 const auth = getAuth(fbApp);
 const dbFire = getFirestore(fbApp);
@@ -761,17 +772,18 @@ let wbCurrentPoints = [];
 let wbCurrentId = null;
 let wbLastPushTime = 0;
 const wbRedoStacks = {}; // "boardId:pageId" -> array of stroke objects (client-local, teacher-only)
+const wbLoadedArchives = {}; // "boardId:pageId" -> array of archived stroke objects, loaded on demand
 
 /* ---------------- Firestore helpers ---------------- */
 
 // Normalizes whatever is stored under `whiteboard` into the current shape:
-// { activeBoardId, boards: [{ id, code, name, createdAt, activePageId, pages:[{id,name,strokes,liveStroke}] }] }
+// { activeBoardId, boards: [{ id, code, name, createdAt, activePageId, pages:[{id,name,strokes,liveStroke,archivedChunks}] }] }
 // Handles classes that have no whiteboard field yet (new/legacy classes).
 function normalizeWhiteboard(raw){
   if(raw && Array.isArray(raw.boards) && raw.boards.length){
     return raw;
   }
-  const page = { id:'page_1', name:'Page 1', strokes:[], liveStroke:null };
+  const page = { id:'page_1', name:'Page 1', strokes:[], liveStroke:null, archivedChunks:[] };
   const board = { id: uid('wbb'), code: genBoardCode(), name:'Board 1', createdAt: new Date().toISOString(), activePageId: page.id, pages:[page] };
   return { activeBoardId: board.id, boards:[board] };
 }
@@ -919,7 +931,7 @@ function renderAttachmentList(atts, delAttrs){
         <div class="wc-attach-item">
           ${isImageType(att.type)
             ? `<button type="button" class="wc-attach-thumb" data-view-image data-img-url="${att.url}" data-img-name="${att.name}" title="${att.name}"><img src="${att.url}" alt="${att.name}" /></button>`
-            : `<a href="${att.url}" download="${att.name}" class="wc-attach-chip" title="${att.name}">&#128206; ${att.name.length>18? att.name.slice(0,18)+'…':att.name}</a>`
+            : `<a href="${att.url}" download="${att.name}" target="_blank" rel="noopener" class="wc-attach-chip" title="${att.name}">&#128206; ${att.name.length>18? att.name.slice(0,18)+'…':att.name}</a>`
           }
           ${delAttrs ? `<button type="button" class="wc-attach-del" title="Remove file" ${delAttrs(i)}>&times;</button>` : ''}
         </div>
@@ -928,8 +940,35 @@ function renderAttachmentList(atts, delAttrs){
   `;
 }
 
-const MAX_ATTACHMENT_BYTES = 700 * 1024; // ~700KB per file, keeps the Firestore 1MB doc limit safe
-const IMAGE_MAX_DIMENSIONS = [1600, 1200, 900, 700, 500, 350]; // progressively smaller re-encode attempts
+/* ---------------- Google Drive sync (via Apps Script Web App) ----------------
+   Attachments (assignment/stream/submission files) and archived whiteboard
+   history are stored as files in Google Drive instead of inline base64 in
+   Firestore documents — Firestore docs are capped at 1MB, and base64 bloats
+   binary data by ~33%, so a handful of image attachments or a long-running
+   whiteboard could silently blow that limit. Firestore now only stores
+   small pointer metadata: { name, type, size, url, driveFileId }.
+
+   Every request is POSTed as a plain string body (not Content-Type: application/json)
+   so the browser treats it as a CORS-safelisted "simple request" and skips
+   the preflight OPTIONS call, which Apps Script Web Apps don't handle. */
+function driveSyncConfigured(){
+  return !!DRIVE_SYNC_URL && !DRIVE_SYNC_URL.startsWith('PASTE_YOUR_');
+}
+
+async function driveApiCall(action, payload){
+  if(!driveSyncConfigured()){
+    throw new Error('Google Drive sync isn\'t configured yet — set DRIVE_SYNC_URL to your deployed Apps Script Web App URL.');
+  }
+  const idToken = await auth.currentUser.getIdToken();
+  const resp = await fetch(DRIVE_SYNC_URL, {
+    method: 'POST',
+    body: JSON.stringify({ action, idToken, ...payload })
+  });
+  if(!resp.ok) throw new Error('Drive sync request failed (HTTP ' + resp.status + ')');
+  const data = await resp.json();
+  if(!data.ok) throw new Error(data.error || 'Drive sync request failed');
+  return data;
+}
 
 function readFileAsDataURL(file){
   return new Promise((resolve, reject)=>{
@@ -956,12 +995,13 @@ function dataUrlByteSize(dataUrl){
   return Math.ceil(base64Part.length * 3 / 4);
 }
 
-// Re-encodes an uploaded image as PNG (instead of storing the original file's
-// raw bytes as base64), downscaling as needed to fit under MAX_ATTACHMENT_BYTES.
-// Normalizing every image to PNG means attachments always end up as a single,
-// predictable, lossless format regardless of what the original upload was
-// (JPEG/HEIC/WebP/etc.), and re-encoding through <canvas> gives us a simple
-// way to shrink oversized photos so more of them fit the Firestore doc limit.
+const IMAGE_MAX_DIMENSIONS = [2000, 1600, 1200, 900, 700]; // progressively smaller re-encode attempts
+const IMAGE_TARGET_BYTES = 3 * 1024 * 1024; // ~3MB — generous now that images live in Drive, not Firestore
+const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024; // Drive-hosted files can be much larger than the old 700KB Firestore cap
+
+// Re-encodes an uploaded image as PNG, downscaling as needed so it stays a
+// reasonable size for fast loading in the UI (Drive itself has no size
+// pressure like Firestore did — this is purely for snappy thumbnails/loads).
 async function compressImageToPng(file){
   const rawDataUrl = await readFileAsDataURL(file);
   const img = await loadImageElement(rawDataUrl);
@@ -979,10 +1019,8 @@ async function compressImageToPng(file){
     const pngDataUrl = canvas.toDataURL('image/png');
     const size = dataUrlByteSize(pngDataUrl);
     lastDataUrl = pngDataUrl; lastSize = size;
-    if(size <= MAX_ATTACHMENT_BYTES) return { dataUrl: pngDataUrl, size };
+    if(size <= IMAGE_TARGET_BYTES) return { dataUrl: pngDataUrl, size };
   }
-  // Even the smallest attempt didn't fit — return it anyway so the caller can
-  // surface a clear "still too large" error with the real resulting size.
   return { dataUrl: lastDataUrl, size: lastSize };
 }
 
@@ -991,44 +1029,68 @@ function pngFileName(name){
   return (base || 'image') + '.png';
 }
 
-async function encodeAttachments(files){
+/* Uploads a batch of files to Drive under classes/{classId}/{category}/{subId}/
+   and returns Firestore-safe pointer objects: { name, type, size, url, driveFileId }. */
+async function encodeAttachments(files, classId, category, subId){
   const encoded = [];
   for(const file of files){
+    let mimeType = file.type || 'application/octet-stream';
+    let uploadName = file.name;
+    let dataBase64;
+
     if(isImageType(file.type)){
       const { dataUrl, size } = await compressImageToPng(file);
       if(size > MAX_ATTACHMENT_BYTES){
-        throw new Error(`"${file.name}" is still ${(size/1024).toFixed(0)}KB after compression — try a smaller image (attachments must be under ${(MAX_ATTACHMENT_BYTES/1024).toFixed(0)}KB).`);
+        throw new Error(`"${file.name}" is still ${(size/1024/1024).toFixed(1)}MB after compression — try a smaller image.`);
       }
-      encoded.push({ name: pngFileName(file.name), type: 'image/png', size, url: dataUrl });
+      mimeType = 'image/png';
+      uploadName = pngFileName(file.name);
+      dataBase64 = dataUrl.split(',')[1];
     }else{
       if(file.size > MAX_ATTACHMENT_BYTES){
-        throw new Error(`"${file.name}" is ${(file.size/1024).toFixed(0)}KB — attachments must be under ${(MAX_ATTACHMENT_BYTES/1024).toFixed(0)}KB.`);
+        throw new Error(`"${file.name}" is ${(file.size/1024/1024).toFixed(1)}MB — attachments must be under ${(MAX_ATTACHMENT_BYTES/1024/1024).toFixed(0)}MB.`);
       }
       const dataUrl = await readFileAsDataURL(file);
-      encoded.push({ name: file.name, type: file.type || '', size: file.size, url: dataUrl });
+      dataBase64 = dataUrl.split(',')[1];
     }
+
+    const result = await driveApiCall('uploadFile', {
+      classId, category, subId,
+      fileName: uploadName, mimeType, dataBase64
+    });
+    encoded.push({ name: uploadName, type: mimeType, size: result.size || file.size, url: result.url, driveFileId: result.fileId });
   }
   return encoded;
 }
 
+async function deleteAttachmentFromDrive(driveFileId){
+  if(!driveFileId) return; // legacy base64 attachments (pre-Drive-sync) have no Drive file to clean up
+  try{ await driveApiCall('deleteFile', { fileId: driveFileId }); }
+  catch(err){ console.warn('Drive file delete failed (continuing anyway)', err); }
+}
+
 async function addAssignmentFn(classId, a){
   await updateDoc(doc(dbFire,'classes',classId), {
-    assignments: arrayUnion({ id: uid('a'), title:a.title, due:a.due, points:a.points, desc:a.desc || '', attachments: a.attachments || [] })
+    assignments: arrayUnion({ id:a.id, title:a.title, due:a.due, points:a.points, desc:a.desc || '', attachments: a.attachments || [] })
   });
 }
 
 async function removeAssignmentAttachmentFn(classId, assignmentId, attIndex){
   const c = getClass(classId);
   if(!c) return;
+  const target = c.assignments.find(a=>a.id===assignmentId);
+  const att = target && target.attachments && target.attachments[attIndex];
   const assignments = c.assignments.map(a=>{
     if(a.id !== assignmentId) return a;
     return { ...a, attachments: (a.attachments||[]).filter((_,i)=> i!==attIndex) };
   });
   await updateDoc(doc(dbFire,'classes',classId), { assignments });
+  if(att) deleteAttachmentFromDrive(att.driveFileId);
 }
 
 async function submitAssignmentFn(classId, assignmentId, files, note){
-  const attachments = files && files.length ? await encodeAttachments(files) : [];
+  const subId = assignmentId + '_' + state.user.uid;
+  const attachments = files && files.length ? await encodeAttachments(files, classId, 'submissions', subId) : [];
   const fieldPath = `submissions.${assignmentId}.${state.user.uid}`;
   await updateDoc(doc(dbFire,'classes',classId), {
     [fieldPath]: {
@@ -1045,9 +1107,11 @@ async function removeSubmissionAttachmentFn(classId, assignmentId, attIndex){
   const subsForA = c && c.submissions && c.submissions[assignmentId];
   const mySub = subsForA ? subsForA[state.user.uid] : null;
   if(!mySub) return;
+  const removedAtt = (mySub.files||[])[attIndex];
   const files = (mySub.files||[]).filter((_,i)=> i!==attIndex);
   const fieldPath = `submissions.${assignmentId}.${state.user.uid}.files`;
   await updateDoc(doc(dbFire,'classes',classId), { [fieldPath]: files });
+  if(removedAtt) deleteAttachmentFromDrive(removedAtt.driveFileId);
 }
 
 async function addStudentFn(classId, name){
@@ -1056,21 +1120,24 @@ async function addStudentFn(classId, name){
   });
 }
 
-async function postAnnouncementFn(classId, text, attachments){
+async function postAnnouncementFn(classId, postId, text, attachments){
   const time = new Date().toLocaleString('en', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
   await updateDoc(doc(dbFire,'classes',classId), {
-    stream: arrayUnion({ id: uid('p'), author: state.user.name, time, text, attachments: attachments || [] })
+    stream: arrayUnion({ id: postId, author: state.user.name, time, text, attachments: attachments || [] })
   });
 }
 
 async function removeStreamAttachmentFn(classId, postId, attIndex){
   const c = getClass(classId);
   if(!c) return;
+  const post = c.stream.find(p=>p.id===postId);
+  const att = post && post.attachments && post.attachments[attIndex];
   const stream = c.stream.map(p=>{
     if(p.id !== postId) return p;
     return { ...p, attachments: (p.attachments||[]).filter((_,i)=> i!==attIndex) };
   });
   await updateDoc(doc(dbFire,'classes',classId), { stream });
+  if(att) deleteAttachmentFromDrive(att.driveFileId);
 }
 
 /* ---------------- Whiteboard Firestore helpers ----------------
@@ -1080,7 +1147,7 @@ async function removeStreamAttachmentFn(classId, postId, attIndex){
    Students only ever read (and, locally, pick which board/page to look at).
 
    Shape: whiteboard: { activeBoardId, boards: [{ id, code, name, createdAt,
-   activePageId, pages: [{ id, name, strokes, liveStroke }] }] }
+   activePageId, pages: [{ id, name, strokes, liveStroke, archivedChunks }] }] }
 
    IMPORTANT: Firestore does NOT support addressing individual elements of a
    real array via dotted field paths in updateDoc() (e.g. "whiteboard.boards.2.pages.0.strokes").
@@ -1093,13 +1160,21 @@ async function removeStreamAttachmentFn(classId, postId, attIndex){
    Undo/redo is a client-local buffer (per board+page, per browser tab) that
    pops/pushes onto the shared `strokes` array — keeps the synced data model
    simple while still giving the teacher standard undo/redo behavior.
+
+   Archiving: once a page's live `strokes` array passes MAX_STROKES, the
+   oldest strokes are moved out to a JSON file in Drive (via archiveStrokes)
+   and replaced with a lightweight pointer in `archivedChunks`. This keeps
+   the Firestore doc small and the realtime listener payload light, while
+   preserving full whiteboard history — viewers can load it on demand with
+   "Load earlier drawings".
 ------------------------------------------------------------- */
 function redoKey(boardId, pageId){ return boardId + ':' + pageId; }
+function archiveKey(boardId, pageId){ return boardId + ':' + pageId; }
 
 async function createBoardFn(classId, name){
   const c = getClass(classId);
   const wb = getWhiteboard(c);
-  const page = { id: uid('page'), name:'Page 1', strokes:[], liveStroke:null };
+  const page = { id: uid('page'), name:'Page 1', strokes:[], liveStroke:null, archivedChunks:[] };
   const board = { id: uid('wbb'), code: genBoardCode(), name: name || ('Board ' + (wb.boards.length+1)), createdAt: new Date().toISOString(), activePageId: page.id, pages:[page] };
   const boards = [...wb.boards, board];
   await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards, 'whiteboard.activeBoardId': board.id });
@@ -1134,7 +1209,7 @@ async function addWbPageFn(classId, boardId){
   const bIdx = boardIndex(wb, boardId);
   if(bIdx < 0) return;
   const board = wb.boards[bIdx];
-  const newPage = { id: uid('page'), name: 'Page ' + (board.pages.length+1), strokes:[], liveStroke:null };
+  const newPage = { id: uid('page'), name: 'Page ' + (board.pages.length+1), strokes:[], liveStroke:null, archivedChunks:[] };
   const boards = wb.boards.map((b,i)=> i===bIdx ? { ...b, pages:[...b.pages, newPage], activePageId: newPage.id } : b);
   await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards });
 }
@@ -1151,6 +1226,7 @@ async function deleteWbPageFn(classId, boardId, pageId){
   const boards = wb.boards.map((b,i)=> i===bIdx ? { ...b, pages, activePageId } : b);
   await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards });
   delete wbRedoStacks[redoKey(boardId, pageId)];
+  delete wbLoadedArchives[archiveKey(boardId, pageId)];
 }
 
 async function pushLiveStroke(classId, boardId, pageId, strokeObj){
@@ -1168,6 +1244,23 @@ async function pushLiveStroke(classId, boardId, pageId, strokeObj){
   await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards });
 }
 
+// Moves the oldest `count` strokes of a page out to a Drive JSON file and
+// returns a pointer describing that chunk. Best-effort: if Drive sync isn't
+// configured or the request fails, we fall back to the old behavior (trim
+// and discard) so drawing itself never breaks because of archiving.
+async function archiveOldestStrokes(classId, boardId, pageId, strokesToArchive){
+  try{
+    const result = await driveApiCall('archiveStrokes', {
+      classId, boardId, pageId,
+      strokesJson: JSON.stringify(strokesToArchive)
+    });
+    return { fileId: result.fileId, url: result.url, count: strokesToArchive.length, archivedAt: new Date().toISOString() };
+  }catch(err){
+    console.warn('Whiteboard archive-to-Drive failed; oldest strokes will be dropped instead', err);
+    return null;
+  }
+}
+
 async function commitStroke(classId, boardId, pageId, strokeObj){
   const c = getClass(classId);
   const wb = getWhiteboard(c);
@@ -1176,15 +1269,22 @@ async function commitStroke(classId, boardId, pageId, strokeObj){
   const board = wb.boards[bIdx];
   const pIdx = pageIndexInBoard(board, pageId);
   if(pIdx < 0) return;
-  const existing = board.pages[pIdx].strokes || [];
+  const page = board.pages[pIdx];
+  const existing = page.strokes || [];
   let strokes = [...existing, strokeObj];
+  let archivedChunks = page.archivedChunks || [];
+
   if(strokes.length > MAX_STROKES){
-    // Keep the doc from growing unbounded / hitting the 1MB Firestore limit.
-    strokes = strokes.slice(strokes.length - (MAX_STROKES - 50));
+    const overflowCount = strokes.length - (MAX_STROKES - 50);
+    const toArchive = strokes.slice(0, overflowCount);
+    const chunkPointer = await archiveOldestStrokes(classId, boardId, pageId, toArchive);
+    strokes = strokes.slice(overflowCount);
+    if(chunkPointer) archivedChunks = [...archivedChunks, chunkPointer];
   }
+
   const boards = wb.boards.map((b,bi)=>{
     if(bi!==bIdx) return b;
-    const pages = b.pages.map((p,pi)=> pi===pIdx ? { ...p, strokes, liveStroke: null } : p);
+    const pages = b.pages.map((p,pi)=> pi===pIdx ? { ...p, strokes, liveStroke: null, archivedChunks } : p);
     return { ...b, pages };
   });
   await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards });
@@ -1244,11 +1344,31 @@ async function clearAllFn(classId, boardId, pageId){
   if(pIdx < 0) return;
   const boards = wb.boards.map((b,bi)=>{
     if(bi!==bIdx) return b;
-    const pages = b.pages.map((p,pi)=> pi===pIdx ? { ...p, strokes: [], liveStroke: null } : p);
+    const pages = b.pages.map((p,pi)=> pi===pIdx ? { ...p, strokes: [], liveStroke: null, archivedChunks: [] } : p);
     return { ...b, pages };
   });
   await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards });
   wbRedoStacks[redoKey(boardId, pageId)] = [];
+  delete wbLoadedArchives[archiveKey(boardId, pageId)];
+}
+
+// Fetches every archived chunk for a page from Drive and caches the merged
+// stroke list locally so "Load earlier drawings" is instant on repeat views.
+async function loadArchivedStrokesForPage(boardId, pageId, archivedChunks){
+  const key = archiveKey(boardId, pageId);
+  if(wbLoadedArchives[key]) return wbLoadedArchives[key];
+  let merged = [];
+  for(const chunk of archivedChunks){
+    try{
+      const result = await driveApiCall('getArchivedStrokes', { fileId: chunk.fileId });
+      const strokes = JSON.parse(result.content || '[]');
+      merged = merged.concat(strokes);
+    }catch(err){
+      console.error('Failed to load an archived whiteboard chunk', err);
+    }
+  }
+  wbLoadedArchives[key] = merged;
+  return merged;
 }
 
 async function updateGradeFn(classId, studentId, assignmentId, val){
@@ -1437,6 +1557,9 @@ function redrawWhiteboard(c){
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0,0,canvas.width,canvas.height);
   if(!page) return;
+  // Draw any archived (earlier) strokes the user has chosen to load, then the live/synced strokes on top.
+  const key = archiveKey(board.id, page.id);
+  if(wbLoadedArchives[key]) wbLoadedArchives[key].forEach(s=> drawStroke(ctx, s));
   (page.strokes||[]).forEach(s=> drawStroke(ctx, s));
   // Draw the remote in-progress stroke (from Firestore) unless it's our own
   // local stroke, which we draw fresh below from the live local buffer.
@@ -2039,6 +2162,8 @@ function renderWhiteboardBoard(c){
   const page = getActivePageOfBoard(board);
   const isLive = wb.activeBoardId === board.id;
   const key = redoKey(board.id, page.id);
+  const archivedChunks = page.archivedChunks || [];
+  const archiveLoaded = !!wbLoadedArchives[archiveKey(board.id, page.id)];
   return `
     <div class="wb-panel">
       <div class="wb-board-head">
@@ -2059,6 +2184,12 @@ function renderWhiteboardBoard(c){
         `).join('')}
         ${teacher? `<button class="wb-page-add" id="wbAddPage">+ Page</button>` : ''}
       </div>
+      ${archivedChunks.length && !archiveLoaded ? `
+      <div class="wb-archive-note">
+        <span>This page has ${archivedChunks.reduce((n,ch)=>n+ch.count,0)} earlier strokes archived to Drive to keep things fast.</span>
+        <button id="wbLoadArchiveBtn">Load earlier drawings</button>
+      </div>
+      ` : ''}
       ${teacher ? `
       <div class="wb-toolbar">
         <div class="wb-tool-group">
@@ -2154,7 +2285,7 @@ function openModal(type, preset, presetAssignment){
           <div class="field">
             <label>Upload your answer (PDF, image, or Word doc)</label>
             <input id="mSubmitFiles" type="file" multiple accept="application/pdf,.pdf,image/*,.doc,.docx" />
-            <div class="field-note" style="margin-top:6px;">Images are automatically converted to PNG. Each file must be under 700KB after conversion.</div>
+            <div class="field-note" style="margin-top:6px;">Files are uploaded to Google Drive. Images are automatically converted to PNG.</div>
           </div>
           <div class="field"><label>Note to teacher (optional)</label><textarea id="mSubmitNote" placeholder="Anything you'd like your teacher to know...">${mySub && mySub.note ? mySub.note : ''}</textarea></div>
         </div>
@@ -2185,7 +2316,7 @@ function openModal(type, preset, presetAssignment){
         <div class="field">
           <label>Attach files or images (optional)</label>
           <input id="mAttachments" type="file" multiple accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip" />
-          <div class="field-note" style="margin-top:6px;">Images are automatically converted to PNG. Each file must be under 700KB after conversion (stored directly in the class record).</div>
+          <div class="field-note" style="margin-top:6px;">Files are uploaded to Google Drive. Images are automatically converted to PNG.</div>
         </div>
         `}
       </div>
@@ -2227,8 +2358,8 @@ function closeModal(){ document.getElementById('overlay').classList.remove('show
    new tab via <a target="_blank">, which many browsers either block or
    just display as a giant URL string instead of rendering the image. This
    in-app lightbox shows the image directly instead, and offers a proper
-   download link (data: URL + download attribute triggers a save instead of
-   a navigation, which browsers do support). */
+   download link. Now that attachments live on Drive, url is a normal
+   https:// link, so the lightbox <img> and download both just work. */
 function openImageLightbox(url, name){
   const lb = document.getElementById('imgLightbox');
   const img = document.getElementById('imgLightboxImg');
@@ -2343,13 +2474,14 @@ function bindGlobalEvents(){
       const originalLabel = el.textContent;
       el.disabled = true;
       try{
+        const postId = uid('p');
         let attachments = [];
         if(files.length){
-          el.textContent = 'Encoding files…';
-          attachments = await encodeAttachments(files);
+          el.textContent = 'Uploading files…';
+          attachments = await encodeAttachments(files, cid, 'stream', postId);
         }
         el.textContent = 'Posting…';
-        await postAnnouncementFn(cid, text, attachments);
+        await postAnnouncementFn(cid, postId, text, attachments);
         input.value = '';
         if(attachInput) attachInput.value = '';
         const summary = document.getElementById('streamAttachSummary');
@@ -2424,6 +2556,25 @@ function bindGlobalEvents(){
       state.wbFollowLive = true;
       state.wbView = 'board'; state.wbOpenBoardId = wb.activeBoardId;
       render();
+    });
+  }
+  const wbLoadArchiveBtn = document.getElementById('wbLoadArchiveBtn');
+  if(wbLoadArchiveBtn){
+    wbLoadArchiveBtn.addEventListener('click', async ()=>{
+      const c = getClass(state.activeClassId);
+      const board = getBoard(c, state.wbOpenBoardId);
+      const page = getActivePageOfBoard(board);
+      if(!board || !page) return;
+      wbLoadArchiveBtn.disabled = true;
+      wbLoadArchiveBtn.textContent = 'Loading…';
+      try{
+        await loadArchivedStrokesForPage(board.id, page.id, page.archivedChunks || []);
+        render();
+      }catch(err){
+        console.error('Load archived strokes failed', err);
+        wbLoadArchiveBtn.disabled = false;
+        wbLoadArchiveBtn.textContent = 'Load earlier drawings';
+      }
     });
   }
 
@@ -2575,13 +2726,14 @@ document.addEventListener('click', async (e)=>{
     const originalLabel = saveBtn.textContent;
     saveBtn.disabled = true;
     try{
+      const assignmentId = uid('a');
       let attachments = [];
       if(files.length){
-        saveBtn.textContent = 'Encoding files…';
-        attachments = await encodeAttachments(files);
+        saveBtn.textContent = 'Uploading files…';
+        attachments = await encodeAttachments(files, cid, 'attachments', assignmentId);
       }
       saveBtn.textContent = 'Saving…';
-      await addAssignmentFn(cid, { title, due, points, desc, attachments });
+      await addAssignmentFn(cid, { id: assignmentId, title, due, points, desc, attachments });
       closeModal();
       render();
     }catch(err){
@@ -2608,7 +2760,7 @@ document.addEventListener('click', async (e)=>{
     const originalLabel = saveBtn.textContent;
     saveBtn.disabled = true;
     try{
-      if(files.length){ saveBtn.textContent = 'Encoding files…'; }
+      if(files.length){ saveBtn.textContent = 'Uploading files…'; }
       await submitAssignmentFn(cid, aid, files, note);
       closeModal();
       render();
