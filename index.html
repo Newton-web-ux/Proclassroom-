@@ -897,6 +897,7 @@ function renderAttachmentList(atts, delAttrs){
 }
 
 const MAX_ATTACHMENT_BYTES = 700 * 1024; // ~700KB per file, keeps the Firestore 1MB doc limit safe
+const IMAGE_MAX_DIMENSIONS = [1600, 1200, 900, 700, 500, 350]; // progressively smaller re-encode attempts
 
 function readFileAsDataURL(file){
   return new Promise((resolve, reject)=>{
@@ -907,14 +908,73 @@ function readFileAsDataURL(file){
   });
 }
 
+function loadImageElement(dataUrl){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    img.onload = ()=> resolve(img);
+    img.onerror = ()=> reject(new Error('Could not read this image.'));
+    img.src = dataUrl;
+  });
+}
+
+// Approx decoded byte size of a base64 data URL (base64 text is ~4/3 the size of the raw bytes).
+function dataUrlByteSize(dataUrl){
+  const commaIdx = dataUrl.indexOf(',');
+  const base64Part = commaIdx>=0 ? dataUrl.slice(commaIdx+1) : dataUrl;
+  return Math.ceil(base64Part.length * 3 / 4);
+}
+
+// Re-encodes an uploaded image as PNG (instead of storing the original file's
+// raw bytes as base64), downscaling as needed to fit under MAX_ATTACHMENT_BYTES.
+// Normalizing every image to PNG means attachments always end up as a single,
+// predictable, lossless format regardless of what the original upload was
+// (JPEG/HEIC/WebP/etc.), and re-encoding through <canvas> gives us a simple
+// way to shrink oversized photos so more of them fit the Firestore doc limit.
+async function compressImageToPng(file){
+  const rawDataUrl = await readFileAsDataURL(file);
+  const img = await loadImageElement(rawDataUrl);
+  const naturalMax = Math.max(img.naturalWidth, img.naturalHeight) || 1;
+
+  let lastDataUrl = null, lastSize = Infinity;
+  for(const maxDim of IMAGE_MAX_DIMENSIONS){
+    const scale = Math.min(1, maxDim / naturalMax);
+    const w = Math.max(1, Math.round(img.naturalWidth * scale));
+    const h = Math.max(1, Math.round(img.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+    const pngDataUrl = canvas.toDataURL('image/png');
+    const size = dataUrlByteSize(pngDataUrl);
+    lastDataUrl = pngDataUrl; lastSize = size;
+    if(size <= MAX_ATTACHMENT_BYTES) return { dataUrl: pngDataUrl, size };
+  }
+  // Even the smallest attempt didn't fit — return it anyway so the caller can
+  // surface a clear "still too large" error with the real resulting size.
+  return { dataUrl: lastDataUrl, size: lastSize };
+}
+
+function pngFileName(name){
+  const base = (name || 'image').replace(/\.[^./\\]+$/, '');
+  return (base || 'image') + '.png';
+}
+
 async function encodeAttachments(files){
   const encoded = [];
   for(const file of files){
-    if(file.size > MAX_ATTACHMENT_BYTES){
-      throw new Error(`"${file.name}" is ${(file.size/1024).toFixed(0)}KB — attachments must be under ${(MAX_ATTACHMENT_BYTES/1024).toFixed(0)}KB.`);
+    if(isImageType(file.type)){
+      const { dataUrl, size } = await compressImageToPng(file);
+      if(size > MAX_ATTACHMENT_BYTES){
+        throw new Error(`"${file.name}" is still ${(size/1024).toFixed(0)}KB after compression — try a smaller image (attachments must be under ${(MAX_ATTACHMENT_BYTES/1024).toFixed(0)}KB).`);
+      }
+      encoded.push({ name: pngFileName(file.name), type: 'image/png', size, url: dataUrl });
+    }else{
+      if(file.size > MAX_ATTACHMENT_BYTES){
+        throw new Error(`"${file.name}" is ${(file.size/1024).toFixed(0)}KB — attachments must be under ${(MAX_ATTACHMENT_BYTES/1024).toFixed(0)}KB.`);
+      }
+      const dataUrl = await readFileAsDataURL(file);
+      encoded.push({ name: file.name, type: file.type || '', size: file.size, url: dataUrl });
     }
-    const dataUrl = await readFileAsDataURL(file);
-    encoded.push({ name: file.name, type: file.type || '', size: file.size, url: dataUrl });
   }
   return encoded;
 }
@@ -2060,9 +2120,9 @@ function openModal(type, preset, presetAssignment){
             ${renderAttachmentList(mySub.files, (i)=>`data-del-submission-att data-class="${c.id}" data-assignment="${a.id}" data-idx="${i}"`)}
           ` : ''}
           <div class="field">
-            <label>Upload your answer (PDF, PNG, or Word doc)</label>
-            <input id="mSubmitFiles" type="file" multiple accept="application/pdf,.pdf,image/png,.png,.doc,.docx" />
-            <div class="field-note" style="margin-top:6px;">Each file must be under 700KB.</div>
+            <label>Upload your answer (PDF, image, or Word doc)</label>
+            <input id="mSubmitFiles" type="file" multiple accept="application/pdf,.pdf,image/*,.doc,.docx" />
+            <div class="field-note" style="margin-top:6px;">Images are automatically converted to PNG. Each file must be under 700KB after conversion.</div>
           </div>
           <div class="field"><label>Note to teacher (optional)</label><textarea id="mSubmitNote" placeholder="Anything you'd like your teacher to know...">${mySub && mySub.note ? mySub.note : ''}</textarea></div>
         </div>
@@ -2093,7 +2153,7 @@ function openModal(type, preset, presetAssignment){
         <div class="field">
           <label>Attach files or images (optional)</label>
           <input id="mAttachments" type="file" multiple accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip" />
-          <div class="field-note" style="margin-top:6px;">Each file must be under 700KB (stored directly in the class record).</div>
+          <div class="field-note" style="margin-top:6px;">Images are automatically converted to PNG. Each file must be under 700KB after conversion (stored directly in the class record).</div>
         </div>
         `}
       </div>
