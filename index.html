@@ -658,8 +658,12 @@ const firebaseConfig = {
    Deploy Code.gs as a Web App ("Execute as: Me", "Who has access: Anyone"),
    then paste the /exec URL here. Until this is set, attachment uploads and
    whiteboard archiving fall back gracefully with a clear error instead of
-   silently failing. See Code.gs for the backend implementation. */
-const DRIVE_SYNC_URL = "https://script.google.com/macros/s/AKfycbyPdnBtXZWbIPPMrKaeOL4Jp80lliVw2f25OBByyAkr2MaaasTR_Spp_WA8mASqTJnCxg/exec";
+   silently failing. See Code.gs for the backend implementation.
+
+   IMPORTANT: any time you edit Code.gs you must create a NEW deployment
+   (Deploy → Manage deployments → Edit → New version) — just hitting Save
+   in the script editor does NOT push changes to the live /exec URL. */
+const DRIVE_SYNC_URL = "https://script.google.com/macros/s/AKfycbyblgFDSsaETupqA9FASrQRIvNnnxtMNmPJSnODl9pPQwkRl8Lb68n0h1UAvkFofpe3_Q/exec";
 
 const fbApp = initializeApp(firebaseConfig);
 const auth = getAuth(fbApp);
@@ -930,7 +934,7 @@ function renderAttachmentList(atts, delAttrs){
       ${atts.map((att,i)=>`
         <div class="wc-attach-item">
           ${isImageType(att.type)
-            ? `<button type="button" class="wc-attach-thumb" data-view-image data-img-url="${att.url}" data-img-name="${att.name}" title="${att.name}"><img src="${att.url}" alt="${att.name}" /></button>`
+            ? `<button type="button" class="wc-attach-thumb" data-view-image data-img-url="${att.url}" data-img-name="${att.name}" title="${att.name}"><img src="${att.url}" alt="${att.name}" referrerpolicy="no-referrer" loading="lazy" /></button>`
             : `<a href="${att.url}" download="${att.name}" target="_blank" rel="noopener" class="wc-attach-chip" title="${att.name}">&#128206; ${att.name.length>18? att.name.slice(0,18)+'…':att.name}</a>`
           }
           ${delAttrs ? `<button type="button" class="wc-attach-del" title="Remove file" ${delAttrs(i)}>&times;</button>` : ''}
@@ -948,9 +952,18 @@ function renderAttachmentList(atts, delAttrs){
    whiteboard could silently blow that limit. Firestore now only stores
    small pointer metadata: { name, type, size, url, driveFileId }.
 
-   Every request is POSTed as a plain string body (not Content-Type: application/json)
-   so the browser treats it as a CORS-safelisted "simple request" and skips
-   the preflight OPTIONS call, which Apps Script Web Apps don't handle. */
+   The `url` returned by the backend is NOT a raw drive.google.com link.
+   Google increasingly blocks/interstitials the old "uc?export=view" and
+   "uc?export=download" hotlink patterns for embedded <img>/<a> use, which
+   is why images silently failed to render. Instead, Code.gs's own doGet()
+   streams the file bytes directly from the Apps Script Web App URL
+   (DRIVE_SYNC_URL?fileId=...), which behaves like any normal, stable
+   image/file URL and isn't subject to Drive's hotlink protections.
+
+   Every upload/delete/archive request is POSTed as a plain string body
+   (not Content-Type: application/json) so the browser treats it as a
+   CORS-safelisted "simple request" and skips the preflight OPTIONS call,
+   which Apps Script Web Apps don't handle. */
 function driveSyncConfigured(){
   return !!DRIVE_SYNC_URL && !DRIVE_SYNC_URL.startsWith('PASTE_YOUR_');
 }
@@ -2358,8 +2371,8 @@ function closeModal(){ document.getElementById('overlay').classList.remove('show
    new tab via <a target="_blank">, which many browsers either block or
    just display as a giant URL string instead of rendering the image. This
    in-app lightbox shows the image directly instead, and offers a proper
-   download link. Now that attachments live on Drive, url is a normal
-   https:// link, so the lightbox <img> and download both just work. */
+   download link. Attachments now load through the Apps Script proxy URL,
+   so the lightbox <img> and download both just work. */
 function openImageLightbox(url, name){
   const lb = document.getElementById('imgLightbox');
   const img = document.getElementById('imgLightboxImg');
