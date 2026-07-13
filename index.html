@@ -454,6 +454,7 @@
   .wb-live-badge{ font-size:10.5px; font-weight:700; color:#2A6B3E; display:inline-flex; align-items:center; gap:5px; }
   .wb-live-badge::before{ content:''; width:7px;height:7px;border-radius:50%; background:#2A6B3E; }
   .wb-viewer-note{ display:flex; align-items:center; justify-content:space-between; padding:10px 16px; font-size:12.5px; color:#5b6b60; border-bottom:1px solid var(--line); background:var(--parchment); gap:10px; }
+  .wb-viewer-note-actions{ display:flex; align-items:center; gap:10px; flex-shrink:0; }
   .wb-canvas-wrap{ padding:14px; background:#fff; }
   .wb-canvas-wrap canvas{ width:100%; height:auto; display:block; border-radius:8px; border:1px solid var(--line); background:#fff; touch-action:none; cursor:crosshair; }
   .wb-archive-note{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 16px; font-size:12px; color:#5b6b60; background:#FBEBD9; border-bottom:1px solid var(--line); }
@@ -687,7 +688,7 @@ const firebaseConfig = {
    then paste the /exec URL here. Until this is set, attachment uploads and
    whiteboard archiving fall back gracefully with a clear error instead of
    silently failing. See Code.gs for the backend implementation. */
-const DRIVE_SYNC_URL = "https://script.google.com/macros/s/AKfycbzPSSMyyNnXl4c_wpZTZp4O30rZlZkNbyE7z1LcDlJ1ebT-bkOOSj8VOBjgiLww6H77wA/exec";
+const DRIVE_SYNC_URL = "https://script.google.com/macros/s/AKfycbz63vHpCp09Il64ypik6h6yjWVNhlIWcvBhDU9NjT4vP8RqjElXiwqk9QVfzTDwAv_Lxw/exec";
 
 const fbApp = initializeApp(firebaseConfig);
 const auth = getAuth(fbApp);
@@ -1493,6 +1494,36 @@ async function loadArchivedStrokesForPage(boardId, pageId, archivedChunks){
   return merged;
 }
 
+/* Gathers everything we currently know locally about a board (all pages,
+   their live strokes, and any already-loaded archived strokes) into a
+   single plain-object payload suitable for JSON.stringify, then ships it
+   to Drive via the 'exportBoard' backend action as a standalone file. This
+   is separate from the automatic archiving above — archiving trims strokes
+   out of Firestore to keep documents small; exporting is a manual,
+   on-demand snapshot the teacher (or a viewer) can trigger any time to get
+   a portable copy of a board's drawings. */
+async function exportBoardToDrive(classId, board){
+  const exportPayload = {
+    boardId: board.id,
+    boardName: board.name,
+    boardCode: board.code,
+    exportedAt: new Date().toISOString(),
+    pages: board.pages.map(p=>({
+      id: p.id,
+      name: p.name,
+      strokes: p.strokes || [],
+      archivedChunkPointers: (p.archivedChunks || []).map(ch=>({ fileId: ch.fileId, count: ch.count, archivedAt: ch.archivedAt })),
+      loadedArchivedStrokes: wbLoadedArchives[archiveKey(board.id, p.id)] || null
+    }))
+  };
+  const safeName = (board.name || 'board').replace(/[^a-z0-9\-_ ]/gi, '').trim().slice(0,60) || 'board';
+  const result = await driveApiCall('exportBoard', {
+    classId, boardId: board.id, boardName: safeName,
+    exportJson: JSON.stringify(exportPayload)
+  });
+  return result;
+}
+
 async function updateGradeFn(classId, studentId, assignmentId, val){
   const fieldPath = `grades.${studentId}.${assignmentId}`;
   if(val === null){
@@ -2271,6 +2302,7 @@ function renderWhiteboardDashboard(c){
           <div class="wc-meta">${b.pages.length} page${b.pages.length===1?'':'s'}</div>
           <div class="wb-board-foot">
             <button class="btn btn-ghost" data-wb-open-board="${b.id}" style="flex:1; justify-content:center;">${teacher? 'Open & present' : 'View'}</button>
+            <button class="wb-board-del" data-wb-export-board="${b.id}" title="Export to Google Drive as JSON" style="color:var(--ink-2);">&#8681;</button>
             ${teacher? `<button class="wb-board-del" data-wb-del-board="${b.id}" title="Delete board">&times;</button>` : ''}
           </div>
         </div>`;
@@ -2332,12 +2364,16 @@ function renderWhiteboardBoard(c){
           <button class="wb-tool-btn" id="wbUndoBtn" ${(page.strokes&&page.strokes.length)?'':'disabled'} title="Undo">&#8630; Undo</button>
           <button class="wb-tool-btn" id="wbRedoBtn" ${(wbRedoStacks[key]&&wbRedoStacks[key].length)?'':'disabled'} title="Redo">&#8631; Redo</button>
         </div>
+        <button class="btn btn-ghost" id="wbExportBtn" data-wb-export-board="${board.id}" title="Save this board's drawings to Google Drive as a JSON file">&#8681; Export to Drive</button>
         <button class="btn btn-ghost" id="wbClearBtn">Clear all</button>
       </div>
       ` : `
       <div class="wb-viewer-note">
         <span id="wbFollowBanner">${isLive? `Watching ${c.ownerName}'s live whiteboard \u00b7 ${board.name} \u00b7 ${page.name}` : `Viewing ${board.name} (not the teacher's current live board)`}</span>
-        <span class="wb-live-badge">Live</span>
+        <div class="wb-viewer-note-actions">
+          <button class="btn btn-ghost" id="wbExportBtn" data-wb-export-board="${board.id}" title="Save this board's drawings to Google Drive as a JSON file" style="padding:6px 11px; font-size:12px;">&#8681; Export</button>
+          <span class="wb-live-badge">Live</span>
+        </div>
       </div>
       `}
       <div class="wb-canvas-wrap">
@@ -2674,6 +2710,35 @@ function bindGlobalEvents(){
       const bid = el.dataset.wbDelBoard;
       if(!confirm('Delete this board and all its pages? This cannot be undone.')) return;
       try{ await deleteBoardFn(state.activeClassId, bid); }catch(err){ console.error('Delete board failed', err); }
+    });
+  });
+
+  // ---- Whiteboard: export-to-Drive controls. Present on both the board
+  // dashboard cards (data-wb-export-board on a plain icon button) and the
+  // open-board toolbar/viewer-note (id="wbExportBtn", also carrying
+  // data-wb-export-board) — same handler either way. Works for teachers and
+  // viewers alike since it only reads local state, never mutates the class.
+  document.querySelectorAll('[data-wb-export-board]').forEach(el=>{
+    el.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const bid = el.dataset.wbExportBoard;
+      const c = getClass(state.activeClassId);
+      const board = getBoard(c, bid);
+      if(!board) return;
+      const originalHTML = el.innerHTML;
+      el.disabled = true;
+      el.textContent = 'Exporting…';
+      try{
+        const result = await exportBoardToDrive(state.activeClassId, board);
+        el.textContent = 'Exported ✓';
+        setTimeout(()=>{ el.disabled = false; el.innerHTML = originalHTML; }, 1800);
+        if(result && result.url) window.open(result.url, '_blank');
+      }catch(err){
+        console.error('Export board to Drive failed', err);
+        alert(err.message || 'Could not export this board to Drive.');
+        el.disabled = false;
+        el.innerHTML = originalHTML;
+      }
     });
   });
 
