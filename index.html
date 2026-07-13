@@ -1197,6 +1197,22 @@ async function addAssignmentFn(classId, a){
   });
 }
 
+/* Updates an existing assignment's fields (title, due date, total marks/points,
+   description). Firestore can't address a single element of a real array via
+   a dotted path in updateDoc(), so — same pattern as the attachment-removal
+   helpers below — we rebuild the whole `assignments` array client-side and
+   write it back as one field. If the total marks (points) are lowered below
+   a score a student already has, that student's recorded score is left as-is
+   (it will just show as extra credit / over the new max) rather than being
+   silently clipped, since a teacher may want to adjust the max after the
+   fact without erasing existing grades. */
+async function updateAssignmentFn(classId, assignmentId, updates){
+  const c = getClass(classId);
+  if(!c) return;
+  const assignments = c.assignments.map(a=> a.id===assignmentId ? { ...a, ...updates } : a);
+  await updateDoc(doc(dbFire,'classes',classId), { assignments });
+}
+
 async function removeAssignmentAttachmentFn(classId, assignmentId, attIndex){
   const c = getClass(classId);
   if(!c) return;
@@ -2172,6 +2188,9 @@ function renderClasswork(c){
               ${mySub? 'View / resubmit' : 'Submit work'}
             </button>
           ` : `
+            <button class="btn btn-ghost" data-modal="editAssignment" data-preset-class="${c.id}" data-preset-assignment="${a.id}" style="width:100%; justify-content:center; margin-top:10px;">
+              &#9998; Edit / change total marks
+            </button>
             <details class="wc-submissions">
               <summary>${subCount}/${c.students.length} submitted</summary>
               <div class="wc-sub-list">
@@ -2228,7 +2247,7 @@ function renderGrades(c){
     return `
       <div class="gradebook-wrap">
         <table class="gradebook">
-          <thead><tr><th>Assignment</th><th>Points</th><th>Your score</th></tr></thead>
+          <thead><tr><th>Assignment</th><th>Total marks</th><th>Your score</th></tr></thead>
           <tbody>
           ${c.assignments.length? c.assignments.map(a=>{
             const val = g[a.id];
@@ -2476,7 +2495,7 @@ function openModal(type, preset, presetAssignment){
         </div>
         <div class="row-2">
           <div class="field"><label>Due date</label><input id="mDue" type="date" value="${state.todayISO}" /></div>
-          <div class="field"><label>Points</label><input id="mPoints" type="number" value="100" min="0" /></div>
+          <div class="field"><label>Total marks</label><input id="mPoints" type="number" value="100" min="0" /></div>
         </div>
         <div class="field"><label>Instructions</label><textarea id="mDesc" placeholder="Assignment details for students..."></textarea></div>
         <div class="field">
@@ -2494,6 +2513,36 @@ function openModal(type, preset, presetAssignment){
         ${teacherClasses.length>0 ? `<button class="btn btn-primary" data-save="newAssignment">Assign</button>` : ''}
       </div>
     `;
+  }
+
+  if(type==='editAssignment'){
+    const c = getClass(preset);
+    const a = c ? c.assignments.find(x=>x.id===presetAssignment) : null;
+    if(!c || !a){
+      body.innerHTML = `<div class="modal-head"><h3>Edit assignment</h3><button class="modal-close" data-close>&times;</button></div><div class="modal-body"><div class="field-note">Assignment not found.</div></div><div class="modal-foot"><button class="btn btn-ghost" data-close>Close</button></div>`;
+    }else{
+      // Warn if any student's recorded score would now exceed the new total marks.
+      const gradesForA = Object.values(c.grades || {}).map(g=> g[a.id]).filter(v=> v!=null);
+      const maxScored = gradesForA.length ? Math.max(...gradesForA.map(Number)) : null;
+      body.innerHTML = `
+        <div class="modal-head"><h3>Edit: ${a.title}</h3><button class="modal-close" data-close>&times;</button></div>
+        <div class="modal-body">
+          <div class="field"><label>Title</label><input id="mEditTitle" type="text" value="${a.title}" /></div>
+          <div class="row-2">
+            <div class="field"><label>Due date</label><input id="mEditDue" type="date" value="${a.due}" /></div>
+            <div class="field"><label>Total marks</label><input id="mEditPoints" type="number" value="${a.points}" min="0" /></div>
+          </div>
+          <div class="field"><label>Instructions</label><textarea id="mEditDesc">${a.desc||''}</textarea></div>
+          <div id="editPointsWarning" class="field-note" style="${maxScored!=null? '' : 'display:none;'}">
+            ${maxScored!=null? `Highest score already recorded for this assignment: ${maxScored}. Lowering total marks below this won't change that student's saved score.` : ''}
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-ghost" data-close>Cancel</button>
+          <button class="btn btn-primary" data-save="editAssignment" data-class="${c.id}" data-assignment="${a.id}">Save changes</button>
+        </div>
+      `;
+    }
   }
 
   if(type==='newStudent'){
@@ -2971,6 +3020,33 @@ document.addEventListener('click', async (e)=>{
       console.error('Add assignment failed', err);
       const noteEl = document.querySelector('#modalBody .field-note');
       if(noteEl){ noteEl.style.color = 'var(--red-pen)'; noteEl.textContent = err.message || 'Could not save assignment.'; }
+      saveBtn.disabled = false;
+      saveBtn.textContent = originalLabel;
+    }
+  }
+
+  if(e.target.matches('[data-save="editAssignment"]')){
+    const cid = e.target.dataset.class, aid = e.target.dataset.assignment;
+    const titleEl = document.getElementById('mEditTitle');
+    if(!titleEl) return;
+    const title = titleEl.value.trim();
+    const due = document.getElementById('mEditDue').value;
+    const pointsRaw = document.getElementById('mEditPoints').value;
+    const points = Number(pointsRaw);
+    const desc = document.getElementById('mEditDesc').value.trim();
+    if(!title || !due || pointsRaw==='' || isNaN(points) || points < 0) return;
+    const saveBtn = e.target;
+    const originalLabel = saveBtn.textContent;
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+    try{
+      await updateAssignmentFn(cid, aid, { title, due, points, desc });
+      closeModal();
+      render();
+    }catch(err){
+      console.error('Edit assignment failed', err);
+      const noteEl = document.getElementById('editPointsWarning');
+      if(noteEl){ noteEl.style.display=''; noteEl.style.color = 'var(--red-pen)'; noteEl.textContent = err.message || 'Could not save changes.'; }
       saveBtn.disabled = false;
       saveBtn.textContent = originalLabel;
     }
