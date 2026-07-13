@@ -282,7 +282,7 @@
     width:100%; border:none; background:var(--parchment); border-radius:8px; padding:10px 12px;
     font-size:13.5px; outline:none; font-family:inherit;
   }
-  .stream-compose-foot{ display:flex; align-items:center; gap:10px; }
+  .stream-compose-foot{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   .stream-attach-btn{
     display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
     color:var(--ink-2); background:var(--parchment); border:1px solid var(--line-strong);
@@ -310,27 +310,55 @@
   .work-card h4{ margin:0 0 4px; font-size:14.5px; font-family:'Fraunces',serif; color:var(--ink); }
   .work-card .wc-meta{ font-size:12px; color:#7b8a80; }
   .work-card .wc-desc{ font-size:12.5px; color:var(--ink-2); margin-top:8px; line-height:1.5; }
-  .wc-attachments{ display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
-  .wc-attach-item{ position:relative; display:inline-flex; }
+  .wc-attachments{ display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }
+  .wc-attach-item{ position:relative; display:inline-flex; flex-direction:column; align-items:center; gap:5px; }
   .wc-attach-thumb{
-    width:46px; height:46px; border-radius:7px; overflow:hidden;
-    border:1px solid var(--line); display:block; flex-shrink:0;
-    padding:0; background:none; cursor:pointer;
+    width:76px; height:76px; border-radius:9px; overflow:hidden;
+    border:1px solid var(--line-strong); display:block; flex-shrink:0;
+    padding:0; background:var(--parchment); cursor:pointer; box-shadow:var(--shadow);
+    transition:border-color .12s, transform .12s;
   }
+  .wc-attach-thumb:hover{ border-color:var(--ochre); transform:translateY(-1px); }
   .wc-attach-thumb img{ width:100%; height:100%; object-fit:cover; display:block; pointer-events:none; }
-  .wc-attach-chip{
-    font-size:11px; font-weight:600; color:var(--ink-2);
-    background:var(--parchment); border:1px solid var(--line); border-radius:6px;
-    padding:5px 9px; max-width:170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-    display:inline-flex; align-items:center; gap:4px;
+  .wc-attach-label{
+    font-size:10.5px; font-weight:600; color:#5b6b60; max-width:82px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center;
   }
-  .wc-attach-chip:hover{ border-color:var(--line-strong); }
+  .wc-attach-chip{
+    font-size:12px; font-weight:600; color:var(--ink-2);
+    background:var(--paper); border:1px solid var(--line-strong); border-radius:9px;
+    padding:9px 12px; max-width:200px; box-shadow:var(--shadow);
+    display:inline-flex; align-items:center; gap:8px;
+  }
+  .wc-attach-chip .chip-ic{
+    width:28px; height:28px; border-radius:7px; background:var(--parchment);
+    display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0;
+  }
+  .wc-attach-chip .chip-text{ display:flex; flex-direction:column; overflow:hidden; text-align:left; min-width:0; }
+  .wc-attach-chip .chip-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .wc-attach-chip .chip-meta{ font-size:10px; font-weight:500; color:#8b978e; text-transform:uppercase; letter-spacing:.03em; }
+  .wc-attach-chip:hover{ border-color:var(--ochre); }
+  .wc-attach-chip.link-chip{ border-color:rgba(60,90,120,.35); }
+  .wc-attach-chip.link-chip .chip-ic{ background:rgba(60,90,120,.12); color:#3C5A78; }
+  .wc-attach-chip.link-chip:hover{ border-color:#3C5A78; }
   .wc-attach-del{
-    position:absolute; top:-6px; right:-6px; width:18px; height:18px; border-radius:50%;
+    position:absolute; top:-6px; right:-6px; width:19px; height:19px; border-radius:50%;
     background:var(--red-pen); color:#fff; border:2px solid var(--paper); font-size:12px;
-    line-height:1; display:flex; align-items:center; justify-content:center; padding:0;
+    line-height:1; display:flex; align-items:center; justify-content:center; padding:0; z-index:2;
   }
   .wc-attach-del:hover{ background:#8a2d30; }
+  .link-insert-pop{
+    display:flex; flex-direction:column; gap:8px; background:var(--paper);
+    border:1px solid var(--line-strong); border-radius:9px; padding:12px;
+    box-shadow:var(--shadow); margin-top:8px; max-width:320px;
+  }
+  .link-insert-pop input{
+    border:1px solid var(--line-strong); border-radius:7px; padding:8px 10px;
+    font-size:12.5px; font-family:inherit; outline:none; background:var(--parchment);
+  }
+  .link-insert-pop input:focus{ border-color:var(--ochre); background:var(--paper); }
+  .link-insert-pop-foot{ display:flex; justify-content:flex-end; gap:8px; }
+  .link-insert-pop-foot button{ font-size:12px; font-weight:600; padding:6px 12px; border-radius:7px; }
   .work-card .wc-foot{ display:flex; align-items:center; justify-content:space-between; margin-top:12px; gap:8px; }
   .wc-submissions{ margin-top:10px; }
   .wc-submissions summary{
@@ -774,6 +802,11 @@ let wbLastPushTime = 0;
 const wbRedoStacks = {}; // "boardId:pageId" -> array of stroke objects (client-local, teacher-only)
 const wbLoadedArchives = {}; // "boardId:pageId" -> array of archived stroke objects, loaded on demand
 
+/* ---- local (non-Firestore) "insert link" pending-attachment buffers ----
+   Link attachments don't need a Drive upload, so they're staged here until
+   the surrounding form (stream post / new assignment / submission) is saved. */
+const pendingLinks = { stream: [], newAssignment: [], submitWork: [] };
+
 /* ---------------- Firestore helpers ---------------- */
 
 // Normalizes whatever is stored under `whiteboard` into the current shape:
@@ -919,25 +952,113 @@ async function joinClassByCode(codeRaw){
 }
 
 function isImageType(type){ return !!type && type.startsWith('image/'); }
+function isLinkAttachment(att){ return !!att && att.type === 'link'; }
+
+const FILE_ICONS = { pdf:'📕', doc:'📘', docx:'📘', ppt:'📙', pptx:'📙', xls:'📗', xlsx:'📗', zip:'🗂️', txt:'📄' };
+function fileIconFor(att){
+  const ext = (att.name || '').split('.').pop().toLowerCase();
+  return FILE_ICONS[ext] || '📎';
+}
+function fileMetaFor(att){
+  const ext = (att.name || '').split('.').pop();
+  if(ext && ext.length<=5 && ext.toLowerCase()!==att.name.toLowerCase()) return ext.toUpperCase();
+  return (att.type||'file').split('/').pop();
+}
 
 /* Renders a row of attachment thumbnails/chips. When delAttrs is provided,
    each attachment gets a small "x" badge; delAttrs(index) should return the
-   data-* attribute string identifying what to delete on click. */
+   data-* attribute string identifying what to delete on click. Handles three
+   attachment kinds: images (thumbnail preview), links (inserted via "Insert
+   link", open in a new tab), and regular files (downloadable chip). */
 function renderAttachmentList(atts, delAttrs){
   if(!atts || !atts.length) return '';
   return `
     <div class="wc-attachments">
-      ${atts.map((att,i)=>`
-        <div class="wc-attach-item">
-          ${isImageType(att.type)
-            ? `<button type="button" class="wc-attach-thumb" data-view-image data-img-url="${att.url}" data-img-name="${att.name}" title="${att.name}"><img src="${att.url}" alt="${att.name}" /></button>`
-            : `<a href="${att.url}" download="${att.name}" target="_blank" rel="noopener" class="wc-attach-chip" title="${att.name}">&#128206; ${att.name.length>18? att.name.slice(0,18)+'…':att.name}</a>`
-          }
-          ${delAttrs ? `<button type="button" class="wc-attach-del" title="Remove file" ${delAttrs(i)}>&times;</button>` : ''}
-        </div>
-      `).join('')}
+      ${atts.map((att,i)=>{
+        const delBtn = delAttrs ? `<button type="button" class="wc-attach-del" title="Remove" ${delAttrs(i)}>&times;</button>` : '';
+        if(isImageType(att.type)){
+          return `
+            <div class="wc-attach-item">
+              <button type="button" class="wc-attach-thumb" data-view-image data-img-url="${att.url}" data-img-name="${att.name}" title="${att.name}"><img src="${att.url}" alt="${att.name}" loading="lazy" /></button>
+              <span class="wc-attach-label">${att.name.length>16? att.name.slice(0,16)+'…':att.name}</span>
+              ${delBtn}
+            </div>`;
+        }
+        if(isLinkAttachment(att)){
+          return `
+            <div class="wc-attach-item">
+              <a href="${att.url}" target="_blank" rel="noopener" class="wc-attach-chip link-chip" title="${att.url}">
+                <span class="chip-ic">&#128279;</span>
+                <span class="chip-text">
+                  <span class="chip-name">${att.name.length>22? att.name.slice(0,22)+'…':att.name}</span>
+                  <span class="chip-meta">Link</span>
+                </span>
+              </a>
+              ${delBtn}
+            </div>`;
+        }
+        return `
+          <div class="wc-attach-item">
+            <a href="${att.url}" download="${att.name}" target="_blank" rel="noopener" class="wc-attach-chip" title="${att.name}">
+              <span class="chip-ic">${fileIconFor(att)}</span>
+              <span class="chip-text">
+                <span class="chip-name">${att.name.length>22? att.name.slice(0,22)+'…':att.name}</span>
+                <span class="chip-meta">${fileMetaFor(att)}</span>
+              </span>
+            </a>
+            ${delBtn}
+          </div>`;
+      }).join('')}
     </div>
   `;
+}
+
+/* ---------------- Insert-link mini popover ----------------
+   A small inline form (URL + optional display name) used anywhere an
+   "Insert link" button appears. Renders into hostEl; calls onAdd(link) with
+   a Firestore-safe attachment object once the person confirms. */
+function showLinkInsertPopover(hostEl, onAdd){
+  if(!hostEl) return;
+  hostEl.innerHTML = `
+    <div class="link-insert-pop">
+      <input type="text" id="linkPopUrl" placeholder="Paste a link (https://...)" />
+      <input type="text" id="linkPopName" placeholder="Display name (optional)" />
+      <div class="link-insert-pop-foot">
+        <button type="button" class="btn btn-ghost" id="linkPopCancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="linkPopAdd">Add link</button>
+      </div>
+    </div>
+  `;
+  const urlInput = hostEl.querySelector('#linkPopUrl');
+  const nameInput = hostEl.querySelector('#linkPopName');
+  urlInput.focus();
+  const confirmAdd = ()=>{
+    let url = urlInput.value.trim();
+    if(!url) { urlInput.focus(); return; }
+    if(!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    const nameVal = nameInput.value.trim();
+    let display = nameVal;
+    if(!display){
+      try{ display = new URL(url).hostname.replace(/^www\./,''); }
+      catch(e){ display = url; }
+    }
+    onAdd({ name: display.slice(0,60), type:'link', url, size:0 });
+    hostEl.innerHTML = '';
+  };
+  hostEl.querySelector('#linkPopCancel').addEventListener('click', ()=>{ hostEl.innerHTML=''; });
+  hostEl.querySelector('#linkPopAdd').addEventListener('click', confirmAdd);
+  urlInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') confirmAdd(); });
+  nameInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') confirmAdd(); });
+}
+
+// Re-renders the pending (not-yet-saved) link chips for a given context
+// ('stream' | 'newAssignment' | 'submitWork') into its container, with a
+// remove button wired to the delegated [data-remove-pending-link] handler.
+function renderPendingLinksInto(ctx){
+  const containerId = ctx==='stream' ? 'streamPendingLinks' : ctx==='newAssignment' ? 'assignmentPendingLinks' : 'submitPendingLinks';
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  el.innerHTML = renderAttachmentList(pendingLinks[ctx], (i)=>`data-remove-pending-link data-ctx="${ctx}" data-idx="${i}"`);
 }
 
 /* ---------------- Google Drive sync (via Apps Script Web App) ----------------
@@ -1064,7 +1185,7 @@ async function encodeAttachments(files, classId, category, subId){
 }
 
 async function deleteAttachmentFromDrive(driveFileId){
-  if(!driveFileId) return; // legacy base64 attachments (pre-Drive-sync) have no Drive file to clean up
+  if(!driveFileId) return; // legacy base64 attachments (pre-Drive-sync) / link attachments have no Drive file to clean up
   try{ await driveApiCall('deleteFile', { fileId: driveFileId }); }
   catch(err){ console.warn('Drive file delete failed (continuing anyway)', err); }
 }
@@ -1088,9 +1209,10 @@ async function removeAssignmentAttachmentFn(classId, assignmentId, attIndex){
   if(att) deleteAttachmentFromDrive(att.driveFileId);
 }
 
-async function submitAssignmentFn(classId, assignmentId, files, note){
+async function submitAssignmentFn(classId, assignmentId, files, note, links){
   const subId = assignmentId + '_' + state.user.uid;
-  const attachments = files && files.length ? await encodeAttachments(files, classId, 'submissions', subId) : [];
+  const uploaded = files && files.length ? await encodeAttachments(files, classId, 'submissions', subId) : [];
+  const attachments = uploaded.concat(links || []);
   const fieldPath = `submissions.${assignmentId}.${state.user.uid}`;
   await updateDoc(doc(dbFire,'classes',classId), {
     [fieldPath]: {
@@ -1964,8 +2086,11 @@ function renderStream(c){
             &#128206; Attach
             <input type="file" id="streamAttachInput" multiple accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip" hidden />
           </label>
+          <button type="button" class="stream-attach-btn" data-insert-link-btn data-ctx="stream" data-host="streamLinkPopoverHost" title="Insert a link">&#128279; Insert link</button>
           <span id="streamAttachSummary" class="field-note"></span>
         </div>
+        <div id="streamLinkPopoverHost"></div>
+        <div id="streamPendingLinks" class="wc-attachments"></div>
       </div>
       <button class="btn btn-primary" data-post-announcement="${c.id}" style="align-self:flex-start;">Post</button>
     </div>
@@ -2269,6 +2394,7 @@ function openModal(type, preset, presetAssignment){
   }
 
   if(type==='submitWork'){
+    pendingLinks.submitWork = [];
     const c = getClass(preset);
     const a = c ? c.assignments.find(x=>x.id===presetAssignment) : null;
     const mySub = (c && a && c.submissions && c.submissions[a.id]) ? c.submissions[a.id][state.user.uid] : null;
@@ -2286,6 +2412,9 @@ function openModal(type, preset, presetAssignment){
             <label>Upload your answer (PDF, image, or Word doc)</label>
             <input id="mSubmitFiles" type="file" multiple accept="application/pdf,.pdf,image/*,.doc,.docx" />
             <div class="field-note" style="margin-top:6px;">Files are uploaded to Google Drive. Images are automatically converted to PNG.</div>
+            <button type="button" class="stream-attach-btn" data-insert-link-btn data-ctx="submitWork" data-host="submitLinkPopoverHost" style="margin-top:8px;">&#128279; Insert link</button>
+            <div id="submitLinkPopoverHost"></div>
+            <div id="submitPendingLinks" class="wc-attachments"></div>
           </div>
           <div class="field"><label>Note to teacher (optional)</label><textarea id="mSubmitNote" placeholder="Anything you'd like your teacher to know...">${mySub && mySub.note ? mySub.note : ''}</textarea></div>
         </div>
@@ -2298,6 +2427,7 @@ function openModal(type, preset, presetAssignment){
   }
 
   if(type==='newAssignment'){
+    pendingLinks.newAssignment = [];
     body.innerHTML = `
       <div class="modal-head"><h3>Create assignment</h3><button class="modal-close" data-close>&times;</button></div>
       <div class="modal-body">
@@ -2317,6 +2447,9 @@ function openModal(type, preset, presetAssignment){
           <label>Attach files or images (optional)</label>
           <input id="mAttachments" type="file" multiple accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip" />
           <div class="field-note" style="margin-top:6px;">Files are uploaded to Google Drive. Images are automatically converted to PNG.</div>
+          <button type="button" class="stream-attach-btn" data-insert-link-btn data-ctx="newAssignment" data-host="assignmentLinkPopoverHost" style="margin-top:8px;">&#128279; Insert link</button>
+          <div id="assignmentLinkPopoverHost"></div>
+          <div id="assignmentPendingLinks" class="wc-attachments"></div>
         </div>
         `}
       </div>
@@ -2470,7 +2603,8 @@ function bindGlobalEvents(){
       const attachInput = document.getElementById('streamAttachInput');
       const text = input.value.trim();
       const files = (attachInput && attachInput.files) ? Array.from(attachInput.files) : [];
-      if(!text && !files.length) return;
+      const links = pendingLinks.stream || [];
+      if(!text && !files.length && !links.length) return;
       const originalLabel = el.textContent;
       el.disabled = true;
       try{
@@ -2480,10 +2614,13 @@ function bindGlobalEvents(){
           el.textContent = 'Uploading files…';
           attachments = await encodeAttachments(files, cid, 'stream', postId);
         }
+        attachments = attachments.concat(links);
         el.textContent = 'Posting…';
         await postAnnouncementFn(cid, postId, text, attachments);
         input.value = '';
         if(attachInput) attachInput.value = '';
+        pendingLinks.stream = [];
+        renderPendingLinksInto('stream');
         const summary = document.getElementById('streamAttachSummary');
         if(summary) summary.textContent = '';
       }catch(e){
@@ -2634,6 +2771,13 @@ function bindGlobalEvents(){
   }
   bindWhiteboardChromeEvents();
 
+  // ---- Insert-link pending previews: repaint whichever context's container
+  // is present in the current DOM so staged (not-yet-saved) links survive a
+  // re-render triggered by something else (e.g. Firestore snapshot updates).
+  renderPendingLinksInto('stream');
+  renderPendingLinksInto('newAssignment');
+  renderPendingLinksInto('submitWork');
+
   const overlay = document.getElementById('overlay');
   overlay.onclick = (e)=>{ if(e.target===overlay) closeModal(); };
 }
@@ -2648,10 +2792,29 @@ document.addEventListener('click', async (e)=>{
     return;
   }
 
+  const insertLinkBtn = e.target.closest('[data-insert-link-btn]');
+  if(insertLinkBtn){
+    const ctx = insertLinkBtn.dataset.ctx;
+    const host = document.getElementById(insertLinkBtn.dataset.host);
+    showLinkInsertPopover(host, (link)=>{
+      pendingLinks[ctx].push(link);
+      renderPendingLinksInto(ctx);
+    });
+    return;
+  }
+
+  if(e.target.matches('[data-remove-pending-link]')){
+    const ctx = e.target.dataset.ctx;
+    const idx = Number(e.target.dataset.idx);
+    if(pendingLinks[ctx]) pendingLinks[ctx].splice(idx, 1);
+    renderPendingLinksInto(ctx);
+    return;
+  }
+
   if(e.target.matches('[data-del-assignment-att]')){
     const btn = e.target;
     const { class: cid, assignment: aid, idx } = btn.dataset;
-    if(!confirm('Remove this file from the assignment?')) return;
+    if(!confirm('Remove this attachment from the assignment?')) return;
     btn.disabled = true;
     try{ await removeAssignmentAttachmentFn(cid, aid, Number(idx)); }
     catch(err){ console.error('Remove assignment attachment failed', err); btn.disabled = false; }
@@ -2660,7 +2823,7 @@ document.addEventListener('click', async (e)=>{
   if(e.target.matches('[data-del-stream-att]')){
     const btn = e.target;
     const { class: cid, post: pid, idx } = btn.dataset;
-    if(!confirm('Remove this file from the post?')) return;
+    if(!confirm('Remove this attachment from the post?')) return;
     btn.disabled = true;
     try{ await removeStreamAttachmentFn(cid, pid, Number(idx)); }
     catch(err){ console.error('Remove stream attachment failed', err); btn.disabled = false; }
@@ -2669,7 +2832,7 @@ document.addEventListener('click', async (e)=>{
   if(e.target.matches('[data-del-submission-att]')){
     const btn = e.target;
     const { class: cid, assignment: aid, idx } = btn.dataset;
-    if(!confirm('Remove this file from your submission?')) return;
+    if(!confirm('Remove this attachment from your submission?')) return;
     btn.disabled = true;
     try{
       await removeSubmissionAttachmentFn(cid, aid, Number(idx));
@@ -2721,6 +2884,7 @@ document.addEventListener('click', async (e)=>{
     const desc = document.getElementById('mDesc').value.trim();
     const fileInput = document.getElementById('mAttachments');
     const files = (fileInput && fileInput.files) ? Array.from(fileInput.files) : [];
+    const links = pendingLinks.newAssignment || [];
     if(!title || !cid) return;
     const saveBtn = e.target;
     const originalLabel = saveBtn.textContent;
@@ -2732,8 +2896,10 @@ document.addEventListener('click', async (e)=>{
         saveBtn.textContent = 'Uploading files…';
         attachments = await encodeAttachments(files, cid, 'attachments', assignmentId);
       }
+      attachments = attachments.concat(links);
       saveBtn.textContent = 'Saving…';
       await addAssignmentFn(cid, { id: assignmentId, title, due, points, desc, attachments });
+      pendingLinks.newAssignment = [];
       closeModal();
       render();
     }catch(err){
@@ -2749,11 +2915,12 @@ document.addEventListener('click', async (e)=>{
     const cid = e.target.dataset.class, aid = e.target.dataset.assignment;
     const fileInput = document.getElementById('mSubmitFiles');
     const files = (fileInput && fileInput.files) ? Array.from(fileInput.files) : [];
+    const links = pendingLinks.submitWork || [];
     const note = document.getElementById('mSubmitNote').value.trim();
     const errNoteSelector = '#modalBody .field-note';
-    if(files.length===0 && !note){
+    if(files.length===0 && !links.length && !note){
       const noteEl = document.querySelector(errNoteSelector);
-      if(noteEl){ noteEl.style.color = 'var(--red-pen)'; noteEl.textContent = 'Attach at least one file or add a note before submitting.'; }
+      if(noteEl){ noteEl.style.color = 'var(--red-pen)'; noteEl.textContent = 'Attach at least one file or link, or add a note, before submitting.'; }
       return;
     }
     const saveBtn = e.target;
@@ -2761,7 +2928,8 @@ document.addEventListener('click', async (e)=>{
     saveBtn.disabled = true;
     try{
       if(files.length){ saveBtn.textContent = 'Uploading files…'; }
-      await submitAssignmentFn(cid, aid, files, note);
+      await submitAssignmentFn(cid, aid, files, note, links);
+      pendingLinks.submitWork = [];
       closeModal();
       render();
     }catch(err){
