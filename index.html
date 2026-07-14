@@ -669,8 +669,8 @@ import {
   getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as fbSignOut
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
-  getFirestore, collection, collectionGroup, addDoc, setDoc, doc, updateDoc, deleteDoc, onSnapshot,
-  query, where, arrayUnion, deleteField, getDocs, writeBatch
+  getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, onSnapshot,
+  query, where, arrayUnion, deleteField, serverTimestamp, getDocs
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 /* ---------------- Firebase config ---------------- */
@@ -790,48 +790,10 @@ const state = {
   wbWidth: 4,
 };
 
-/* ---------------- Data model ----------------
-   PREVIOUSLY: everything about a class (students, assignments, grades,
-   stream posts, submissions, whiteboard boards+strokes) lived as arrays /
-   maps embedded directly inside a single `classes/{classId}` document.
-   That hit two walls as classes grew: Firestore's 1MB-per-document cap,
-   and — more painfully day-to-day — every single edit (one new post, one
-   grade, one stroke) had to rewrite the ENTIRE containing array/object and
-   ship it back over the wire, even though only one small item changed.
-
-   NOW: each logical item is its own Firestore document, in a subcollection
-   under its class:
-     classes/{classId}                                    — class metadata only
-     classes/{classId}/students/{studentId}                — one roster entry
-     classes/{classId}/assignments/{assignmentId}           — one assignment
-     classes/{classId}/assignments/{assignmentId}/submissions/{studentId} — one submission
-     classes/{classId}/stream/{postId}                      — one announcement
-     classes/{classId}/grades/{studentId}                   — one student's score map
-     classes/{classId}/whiteboardBoards/{boardId}           — one whiteboard board
-
-   The UI layer is unchanged: renderStream/renderClasswork/renderGrades/etc.
-   still consume a single assembled `class` object shaped exactly like
-   before ({ ...meta, students:[], assignments:[], grades:{}, stream:[],
-   submissions:{}, whiteboard:{activeBoardId,boards:[]} }). buildClassObject()
-   below reassembles that shape client-side from the maps populated by the
-   listeners; only the Firestore read/write layer changed. */
 const db = { classes: [] };
-
-let classMetaOwned = {}, classMetaMember = {};   // classId -> lightweight class doc fields
-let classMeta = {};                               // merged
-let assignmentsByClass = {};   // classId -> { assignmentId: assignment }
-let streamByClass = {};        // classId -> { postId: post }
-let studentsByClass = {};      // classId -> { studentId: student }
-let gradesByClass = {};        // classId -> { studentId: { assignmentId: score } }
-let submissionsByClass = {};   // classId -> { assignmentId: { studentId: submission } } — only for the OPEN class
-let boardsByClass = {};        // classId -> { boardId: board } — only for the OPEN class
-
-let unsubClassOwned = null, unsubClassMember = null;
-let unsubAssignments = null, unsubStream = null, unsubStudents = null, unsubGrades = null;
-let unsubSubmissions = null, unsubBoards = null;
+let ownedMap = {}, memberMap = {};
+let unsubOwned = null, unsubMember = null;
 let ownedLoaded = false, memberLoaded = false;
-let lastAggregateClassIds = null; // last set of classIds the collectionGroup listeners were scoped to
-let detailListenersForClassId = null; // which class's submissions/whiteboardBoards listeners are currently attached
 
 /* ---- local (non-Firestore) whiteboard drawing session state ---- */
 let wbDrawing = false;
@@ -848,192 +810,87 @@ const pendingLinks = { stream: [], newAssignment: [], submitWork: [] };
 
 /* ---------------- Firestore helpers ---------------- */
 
-function boardIndex(wb, boardId){ return wb.boards.findIndex(b=>b.id===boardId); }
-function getBoard(c, boardId){ const wb=c.whiteboard; return wb.boards.find(b=>b.id===boardId) || null; }
-function getActiveBoard(c){ const wb=c.whiteboard; return wb.boards.find(b=>b.id===wb.activeBoardId) || wb.boards[0] || null; }
-function pageIndexInBoard(board, pageId){ return board.pages.findIndex(p=>p.id===pageId); }
-function getActivePageOfBoard(board){ return board ? (board.pages.find(p=>p.id===board.activePageId) || board.pages[0]) : null; }
-// Kept for call sites that still say getWhiteboard(c) — the whiteboard shape
-// now lives directly on the assembled class object, no normalization needed.
-function getWhiteboard(c){ return (c && c.whiteboard) || { activeBoardId:null, boards:[] }; }
+// Normalizes whatever is stored under `whiteboard` into the current shape:
+// { activeBoardId, boards: [{ id, code, name, createdAt, activePageId, pages:[{id,name,strokes,liveStroke,archivedChunks}] }] }
+// Handles classes that have no whiteboard field yet (new/legacy classes).
+function normalizeWhiteboard(raw){
+  if(raw && Array.isArray(raw.boards) && raw.boards.length){
+    return raw;
+  }
+  const page = { id:'page_1', name:'Page 1', strokes:[], liveStroke:null, archivedChunks:[] };
+  const board = { id: uid('wbb'), code: genBoardCode(), name:'Board 1', createdAt: new Date().toISOString(), activePageId: page.id, pages:[page] };
+  return { activeBoardId: board.id, boards:[board] };
+}
 
-// Reassembles the single "class" shape the rendering layer expects, out of
-// the class-metadata doc plus whatever per-item maps have been populated by
-// the listeners below. submissions/whiteboardBoards are only populated for
-// the currently-open class (see attachClassDetailListeners), so they read
-// as empty for classes that aren't open — which is fine, since nothing
-// renders that data unless the class is open.
-function buildClassObject(classId){
-  const meta = classMeta[classId];
-  if(!meta) return null;
-  const assignments = Object.values(assignmentsByClass[classId] || {}).sort((a,b)=> (a.createdAt||0)-(b.createdAt||0));
-  const stream = Object.values(streamByClass[classId] || {}).sort((a,b)=> (a.createdAt||0)-(b.createdAt||0));
-  const students = Object.values(studentsByClass[classId] || {});
-  const boards = Object.values(boardsByClass[classId] || {}).sort((a,b)=> (a.createdAt||0)-(b.createdAt||0));
+function docToClass(docSnap){
+  const d = docSnap.data();
   return {
-    id: classId,
-    name: meta.name, section: meta.section, room: meta.room, color: meta.color,
-    ownerId: meta.ownerId, ownerName: meta.ownerName, ownerEmail: meta.ownerEmail,
-    joinCode: meta.joinCode,
-    memberUids: meta.memberUids || [],
-    students, assignments, stream,
-    grades: gradesByClass[classId] || {},
-    submissions: submissionsByClass[classId] || {},
-    whiteboard: { activeBoardId: meta.whiteboardActiveBoardId || null, boards }
+    id: docSnap.id,
+    name: d.name, section: d.section, room: d.room, color: d.color,
+    ownerId: d.ownerId, ownerName: d.ownerName, ownerEmail: d.ownerEmail,
+    joinCode: d.joinCode,
+    memberUids: d.memberUids || [],
+    students: d.students || [],
+    assignments: d.assignments || [],
+    grades: d.grades || {},
+    stream: d.stream || [],
+    submissions: d.submissions || {},
+    whiteboard: normalizeWhiteboard(d.whiteboard)
   };
 }
 
-function rebuildDbClasses(){
-  db.classes = Object.keys(classMeta).map(buildClassObject).filter(Boolean).sort((a,b)=> a.name.localeCompare(b.name));
-}
+function getWhiteboard(c){ return normalizeWhiteboard(c && c.whiteboard); }
+function getBoards(c){ return getWhiteboard(c).boards; }
+function boardIndex(wb, boardId){ return wb.boards.findIndex(b=>b.id===boardId); }
+function getBoard(c, boardId){ const wb=getWhiteboard(c); return wb.boards.find(b=>b.id===boardId) || null; }
+function getActiveBoard(c){ const wb=getWhiteboard(c); return wb.boards.find(b=>b.id===wb.activeBoardId) || wb.boards[0] || null; }
+function pageIndexInBoard(board, pageId){ return board.pages.findIndex(p=>p.id===pageId); }
+function getActivePageOfBoard(board){ return board ? (board.pages.find(p=>p.id===board.activePageId) || board.pages[0]) : null; }
 
 function mergeClasses(){
-  classMeta = { ...classMetaMember, ...classMetaOwned };
-  rebuildDbClasses();
-
+  const merged = { ...memberMap, ...ownedMap };
+  db.classes = Object.values(merged).sort((a,b)=> a.name.localeCompare(b.name));
   // Only treat a missing active class as "really gone" once BOTH the owned
   // and member listeners have delivered at least one snapshot. Firestore's
   // two independent onSnapshot streams don't resolve in lockstep, so acting
   // on a single stale/partial merge here was incorrectly bouncing the user
-  // back to the main Dashboard mid-session.
-  if(ownedLoaded && memberLoaded && state.activeClassId && !classMeta[state.activeClassId]){
+  // back to the main Dashboard mid-session (e.g. while drawing, since every
+  // whiteboard write re-triggers the owned-classes listener).
+  if(ownedLoaded && memberLoaded && state.activeClassId && !merged[state.activeClassId]){
     state.view = 'dashboard'; state.activeClassId = null;
-    detachClassDetailListeners();
   }
   state.connStatus = 'live';
 
-  resubscribeAggregatesIfNeeded();
-  rerenderAfterDataChange();
-}
+  const activeClass = state.activeClassId ? merged[state.activeClassId] : null;
 
-// Full-table (assignments/stream/students/grades) listeners are scoped to
-// "every class the signed-in user belongs to" via collectionGroup queries
-// filtered on a `classId` field stored on each item doc, `in` the known set
-// of class ids. Only resubscribes when that set of ids actually changes
-// (joining/creating/leaving a class), not on every metadata tick.
-function resubscribeAggregatesIfNeeded(){
-  const ids = Object.keys(classMeta).sort();
-  const key = ids.join(',');
-  if(key === lastAggregateClassIds) return;
-  lastAggregateClassIds = key;
-
-  if(unsubAssignments) unsubAssignments();
-  if(unsubStream) unsubStream();
-  if(unsubStudents) unsubStudents();
-  if(unsubGrades) unsubGrades();
-  unsubAssignments = unsubStream = unsubStudents = unsubGrades = null;
-  assignmentsByClass = {}; streamByClass = {}; studentsByClass = {}; gradesByClass = {};
-
-  if(ids.length === 0){ rebuildDbClasses(); render(); return; }
-
-  // Firestore 'in' filters accept at most 30 values — chunk defensively.
-  const chunks = [];
-  for(let i=0;i<ids.length;i+=30) chunks.push(ids.slice(i,i+30));
-
-  const unsubsA = [], unsubsS = [], unsubsSt = [], unsubsG = [];
-  chunks.forEach(chunk=>{
-    unsubsA.push(onSnapshot(query(collectionGroup(dbFire,'assignments'), where('classId','in',chunk)), snap=>{
-      snap.docChanges().forEach(ch=>{
-        const cid = ch.doc.data().classId;
-        if(!assignmentsByClass[cid]) assignmentsByClass[cid] = {};
-        if(ch.type==='removed') delete assignmentsByClass[cid][ch.doc.id];
-        else assignmentsByClass[cid][ch.doc.id] = { id: ch.doc.id, ...ch.doc.data() };
-      });
-      rebuildDbClasses(); rerenderAfterDataChange();
-    }, err=>console.error('assignments listener error', err)));
-
-    unsubsS.push(onSnapshot(query(collectionGroup(dbFire,'stream'), where('classId','in',chunk)), snap=>{
-      snap.docChanges().forEach(ch=>{
-        const cid = ch.doc.data().classId;
-        if(!streamByClass[cid]) streamByClass[cid] = {};
-        if(ch.type==='removed') delete streamByClass[cid][ch.doc.id];
-        else streamByClass[cid][ch.doc.id] = { id: ch.doc.id, ...ch.doc.data() };
-      });
-      rebuildDbClasses(); rerenderAfterDataChange();
-    }, err=>console.error('stream listener error', err)));
-
-    unsubsSt.push(onSnapshot(query(collectionGroup(dbFire,'students'), where('classId','in',chunk)), snap=>{
-      snap.docChanges().forEach(ch=>{
-        const cid = ch.doc.data().classId;
-        if(!studentsByClass[cid]) studentsByClass[cid] = {};
-        if(ch.type==='removed') delete studentsByClass[cid][ch.doc.id];
-        else studentsByClass[cid][ch.doc.id] = { id: ch.doc.id, ...ch.doc.data() };
-      });
-      rebuildDbClasses(); rerenderAfterDataChange();
-    }, err=>console.error('students listener error', err)));
-
-    unsubsG.push(onSnapshot(query(collectionGroup(dbFire,'grades'), where('classId','in',chunk)), snap=>{
-      snap.docChanges().forEach(ch=>{
-        const cid = ch.doc.data().classId;
-        if(!gradesByClass[cid]) gradesByClass[cid] = {};
-        if(ch.type==='removed') delete gradesByClass[cid][ch.doc.id];
-        else gradesByClass[cid][ch.doc.id] = ch.doc.data().scores || {};
-      });
-      rebuildDbClasses(); rerenderAfterDataChange();
-    }, err=>console.error('grades listener error', err)));
-  });
-  unsubAssignments = ()=> unsubsA.forEach(f=>f());
-  unsubStream = ()=> unsubsS.forEach(f=>f());
-  unsubStudents = ()=> unsubsSt.forEach(f=>f());
-  unsubGrades = ()=> unsubsG.forEach(f=>f());
-}
-
-// Submissions (which carry file lists) and whiteboard boards (which carry
-// stroke data) are only ever rendered for the class currently open in the
-// UI, so — unlike assignments/stream/students/grades above — they're only
-// listened to for that one class instead of every class the user belongs
-// to. Call with null to detach and listen to nothing (e.g. back at Dashboard).
-function attachClassDetailListeners(classId){
-  if(detailListenersForClassId === classId) return;
-  detachClassDetailListeners();
-  detailListenersForClassId = classId;
-  if(!classId) return;
-
-  submissionsByClass[classId] = {};
-  unsubSubmissions = onSnapshot(query(collectionGroup(dbFire,'submissions'), where('classId','==',classId)), snap=>{
-    const bucket = {};
-    snap.forEach(d=>{
-      const data = d.data();
-      if(!bucket[data.assignmentId]) bucket[data.assignmentId] = {};
-      bucket[data.assignmentId][data.studentId] = data;
-    });
-    submissionsByClass[classId] = bucket;
-    rebuildDbClasses(); rerenderAfterDataChange();
-  }, err=>console.error('submissions listener error', err));
-
-  boardsByClass[classId] = {};
-  unsubBoards = onSnapshot(collection(dbFire,'classes',classId,'whiteboardBoards'), snap=>{
-    const bucket = {};
-    snap.forEach(d=> bucket[d.id] = { id: d.id, ...d.data() });
-    boardsByClass[classId] = bucket;
-    rebuildDbClasses(); rerenderAfterDataChange();
-  }, err=>console.error('whiteboard boards listener error', err));
-}
-function detachClassDetailListeners(){
-  if(unsubSubmissions) unsubSubmissions();
-  if(unsubBoards) unsubBoards();
-  unsubSubmissions = unsubBoards = null;
-  if(detailListenersForClassId){ delete submissionsByClass[detailListenersForClassId]; delete boardsByClass[detailListenersForClassId]; }
-  detailListenersForClassId = null;
-}
-
-// Same "patch the live whiteboard canvas in place instead of a full
-// render()" logic as before — only the data source changed.
-function rerenderAfterDataChange(){
-  const activeClass = state.activeClassId ? getClass(state.activeClassId) : null;
-
-  if(activeClass && !isTeacher(activeClass) && state.view==='class' && state.classTab==='whiteboard' && state.wbFollowLive){
-    const wb = activeClass.whiteboard;
-    if(wb.activeBoardId){ state.wbView = 'board'; state.wbOpenBoardId = wb.activeBoardId; }
-    else { state.wbView = 'dashboard'; state.wbOpenBoardId = null; }
+  // Students auto-follow whatever board/page the teacher currently has live,
+  // unless they've manually navigated away (wbFollowLive=false).
+  if(activeClass && !isTeacher(activeClass) && state.view==='class' && state.activeClassId===activeClass.id
+     && state.classTab==='whiteboard' && state.wbFollowLive){
+    const wb = getWhiteboard(activeClass);
+    if(wb.activeBoardId){
+      state.wbView = 'board';
+      state.wbOpenBoardId = wb.activeBoardId;
+    }else{
+      state.wbView = 'dashboard';
+      state.wbOpenBoardId = null;
+    }
   }
 
+  // If the whiteboard canvas is already mounted, just redraw it and patch the
+  // surrounding chrome in place instead of doing a full re-render. A full
+  // re-render would destroy/recreate the <canvas>, interrupting an in-progress
+  // stroke (and dropping pointer capture) for the teacher, and cause flicker
+  // for viewers. We also never let a full re-render happen while a stroke is
+  // actively being drawn (wbDrawing) — that mid-gesture DOM swap is what was
+  // causing drawing to silently stop and the whiteboard view to "reset".
   const wbCanvasEl = document.getElementById('wbCanvas');
   if(state.view==='class' && state.classTab==='whiteboard' && state.wbView==='board' && activeClass && wbCanvasEl){
     redrawWhiteboard(activeClass);
     syncWhiteboardChrome(activeClass);
   }else if(wbDrawing && wbCanvasEl){
     // Mid-stroke: skip the render entirely rather than risk tearing down the canvas.
+    // The chrome/state will catch up on the next snapshot once the stroke ends.
   }else{
     render();
   }
@@ -1041,22 +898,22 @@ function rerenderAfterDataChange(){
 
 function listenClasses(){
   const uidVal = state.user.uid;
-  if(unsubClassOwned) unsubClassOwned();
-  if(unsubClassMember) unsubClassMember();
+  if(unsubOwned) unsubOwned();
+  if(unsubMember) unsubMember();
   ownedLoaded = false; memberLoaded = false;
 
   const ownedQ = query(collection(dbFire,'classes'), where('ownerId','==',uidVal));
-  unsubClassOwned = onSnapshot(ownedQ, snap=>{
-    classMetaOwned = {};
-    snap.forEach(d=> classMetaOwned[d.id] = d.data());
+  unsubOwned = onSnapshot(ownedQ, snap=>{
+    ownedMap = {};
+    snap.forEach(d=> ownedMap[d.id] = docToClass(d));
     ownedLoaded = true;
     mergeClasses();
   }, err=>{ console.error('owned listener error', err); state.connStatus='error'; render(); });
 
   const memberQ = query(collection(dbFire,'classes'), where('memberUids','array-contains',uidVal));
-  unsubClassMember = onSnapshot(memberQ, snap=>{
-    classMetaMember = {};
-    snap.forEach(d=> classMetaMember[d.id] = d.data());
+  unsubMember = onSnapshot(memberQ, snap=>{
+    memberMap = {};
+    snap.forEach(d=> memberMap[d.id] = docToClass(d));
     memberLoaded = true;
     mergeClasses();
   }, err=>{ console.error('member listener error', err); state.connStatus='error'; render(); });
@@ -1067,44 +924,14 @@ async function createClassFn(name, section, room, color){
     name, section: section || 'Section 1', room: room || 'TBD', color,
     ownerId: state.user.uid, ownerName: state.user.name, ownerEmail: state.user.email,
     joinCode: genJoinCode(),
-    memberUids: [],
-    whiteboardActiveBoardId: null,
-    createdAt: Date.now()
+    memberUids: [], students: [], assignments: [], grades: {}, stream: [],
+    whiteboard: normalizeWhiteboard(null),
+    createdAt: serverTimestamp()
   });
-  // Give every new class one starter whiteboard board, as its own document.
-  const boardId = uid('wbb');
-  const page = { id:'page_1', name:'Page 1', strokes:[], liveStroke:null, archivedChunks:[] };
-  await setDoc(doc(dbFire,'classes',ref.id,'whiteboardBoards',boardId), {
-    classId: ref.id, code: genBoardCode(), name:'Board 1', createdAt: Date.now(),
-    activePageId: page.id, pages:[page]
-  });
-  await updateDoc(doc(dbFire,'classes',ref.id), { whiteboardActiveBoardId: boardId });
   return ref.id;
 }
 
-// Deleting a class doesn't automatically delete its subcollections in
-// Firestore — those have to be removed explicitly, or they'd sit around as
-// unreachable (but still stored/billed) orphans. Batches deletes in groups
-// of <=500 (Firestore's per-batch write limit).
-async function deleteCollectionDocs(colRef){
-  const snap = await getDocs(colRef);
-  const docs = snap.docs;
-  for(let i=0;i<docs.length;i+=450){
-    const batch = writeBatch(dbFire);
-    docs.slice(i,i+450).forEach(d=> batch.delete(d.ref));
-    await batch.commit();
-  }
-  return docs;
-}
 async function deleteClassFn(classId){
-  const assignmentDocs = await deleteCollectionDocs(collection(dbFire,'classes',classId,'assignments'));
-  for(const a of assignmentDocs){
-    await deleteCollectionDocs(collection(dbFire,'classes',classId,'assignments',a.id,'submissions'));
-  }
-  await deleteCollectionDocs(collection(dbFire,'classes',classId,'stream'));
-  await deleteCollectionDocs(collection(dbFire,'classes',classId,'students'));
-  await deleteCollectionDocs(collection(dbFire,'classes',classId,'grades'));
-  await deleteCollectionDocs(collection(dbFire,'classes',classId,'whiteboardBoards'));
   await deleteDoc(doc(dbFire,'classes',classId));
 }
 
@@ -1116,14 +943,13 @@ async function joinClassByCode(codeRaw){
   if(snap.empty) return { ok:false, msg:'No class found with that code.' };
   const docSnap = snap.docs[0];
   const data = docSnap.data();
-  const classId = docSnap.id;
   if(data.ownerId === state.user.uid) return { ok:false, msg:"You're the teacher of this class." };
-  if((data.memberUids||[]).includes(state.user.uid)) return { ok:true, classId };
-  await updateDoc(doc(dbFire,'classes',classId), { memberUids: arrayUnion(state.user.uid) });
-  await setDoc(doc(dbFire,'classes',classId,'students',state.user.uid), {
-    classId, id: state.user.uid, uid: state.user.uid, name: state.user.name, email: state.user.email
+  if((data.memberUids||[]).includes(state.user.uid)) return { ok:true, classId:docSnap.id };
+  await updateDoc(doc(dbFire,'classes',docSnap.id), {
+    memberUids: arrayUnion(state.user.uid),
+    students: arrayUnion({ id: state.user.uid, uid: state.user.uid, name: state.user.name, email: state.user.email })
   });
-  return { ok:true, classId };
+  return { ok:true, classId:docSnap.id };
 }
 
 function isImageType(type){ return !!type && type.startsWith('image/'); }
@@ -1366,41 +1192,53 @@ async function deleteAttachmentFromDrive(driveFileId){
 }
 
 async function addAssignmentFn(classId, a){
-  await setDoc(doc(dbFire,'classes',classId,'assignments',a.id), {
-    classId, id:a.id, title:a.title, due:a.due, points:a.points, desc:a.desc || '',
-    attachments: a.attachments || [], createdAt: Date.now()
+  await updateDoc(doc(dbFire,'classes',classId), {
+    assignments: arrayUnion({ id:a.id, title:a.title, due:a.due, points:a.points, desc:a.desc || '', attachments: a.attachments || [] })
   });
 }
 
 /* Updates an existing assignment's fields (title, due date, total marks/points,
-   description). Now that each assignment is its own document, this is a
-   plain targeted updateDoc — no more rebuilding a shared array. If the total
-   marks (points) are lowered below a score a student already has, that
-   student's recorded score is left as-is (it will just show as extra credit
-   / over the new max) rather than being silently clipped, since a teacher
-   may want to adjust the max after the fact without erasing existing grades. */
+   description). Firestore can't address a single element of a real array via
+   a dotted path in updateDoc(), so — same pattern as the attachment-removal
+   helpers below — we rebuild the whole `assignments` array client-side and
+   write it back as one field. If the total marks (points) are lowered below
+   a score a student already has, that student's recorded score is left as-is
+   (it will just show as extra credit / over the new max) rather than being
+   silently clipped, since a teacher may want to adjust the max after the
+   fact without erasing existing grades. */
 async function updateAssignmentFn(classId, assignmentId, updates){
-  await updateDoc(doc(dbFire,'classes',classId,'assignments',assignmentId), updates);
+  const c = getClass(classId);
+  if(!c) return;
+  const assignments = c.assignments.map(a=> a.id===assignmentId ? { ...a, ...updates } : a);
+  await updateDoc(doc(dbFire,'classes',classId), { assignments });
 }
 
-/* Permanently deletes an assignment doc, strips any recorded grades for it
-   from every student's grade doc, deletes its submissions subcollection,
-   then best-effort cleans up every Drive file involved (the assignment's
-   own attachments, plus every student's submitted files). */
+/* Permanently deletes an assignment: removes it from the assignments array,
+   strips any recorded grades for it from every student's grade map, and
+   removes its submissions bucket entirely — then best-effort cleans up every
+   Drive file involved (the assignment's own attachments, plus every
+   student's submitted files) now that the Firestore doc no longer points to
+   them. Same "rebuild the whole object client-side" approach as everywhere
+   else here, since Firestore updateDoc() can't address individual array
+   elements or map keys via dotted paths reliably for this shape. */
 async function deleteAssignmentFn(classId, assignmentId){
   const c = getClass(classId);
   if(!c) return;
   const target = c.assignments.find(a=>a.id===assignmentId);
+  const assignments = c.assignments.filter(a=>a.id!==assignmentId);
+
+  const grades = {};
+  Object.entries(c.grades || {}).forEach(([sid, g])=>{
+    const rest = { ...g };
+    delete rest[assignmentId];
+    grades[sid] = rest;
+  });
+
   const removedSubs = (c.submissions || {})[assignmentId];
+  const submissions = { ...(c.submissions || {}) };
+  delete submissions[assignmentId];
 
-  await deleteDoc(doc(dbFire,'classes',classId,'assignments',assignmentId));
-  await deleteCollectionDocs(collection(dbFire,'classes',classId,'assignments',assignmentId,'submissions'));
-
-  // Strip this assignment's key out of every student's grade doc that has it.
-  const gradeUpdates = Object.entries(c.grades || {})
-    .filter(([sid,g])=> g && g[assignmentId] != null)
-    .map(([sid])=> updateDoc(doc(dbFire,'classes',classId,'grades',sid), { [`scores.${assignmentId}`]: deleteField() }).catch(()=>{}));
-  await Promise.all(gradeUpdates);
+  await updateDoc(doc(dbFire,'classes',classId), { assignments, grades, submissions });
 
   if(target) (target.attachments || []).forEach(att=> deleteAttachmentFromDrive(att.driveFileId));
   if(removedSubs){
@@ -1415,8 +1253,11 @@ async function removeAssignmentAttachmentFn(classId, assignmentId, attIndex){
   if(!c) return;
   const target = c.assignments.find(a=>a.id===assignmentId);
   const att = target && target.attachments && target.attachments[attIndex];
-  const attachments = (target && target.attachments || []).filter((_,i)=> i!==attIndex);
-  await updateDoc(doc(dbFire,'classes',classId,'assignments',assignmentId), { attachments });
+  const assignments = c.assignments.map(a=>{
+    if(a.id !== assignmentId) return a;
+    return { ...a, attachments: (a.attachments||[]).filter((_,i)=> i!==attIndex) };
+  });
+  await updateDoc(doc(dbFire,'classes',classId), { assignments });
   if(att) deleteAttachmentFromDrive(att.driveFileId);
 }
 
@@ -1424,12 +1265,14 @@ async function submitAssignmentFn(classId, assignmentId, files, note, links){
   const subId = assignmentId + '_' + state.user.uid;
   const uploaded = files && files.length ? await encodeAttachments(files, classId, 'submissions', subId) : [];
   const attachments = uploaded.concat(links || []);
-  await setDoc(doc(dbFire,'classes',classId,'assignments',assignmentId,'submissions',state.user.uid), {
-    classId, assignmentId, studentId: state.user.uid,
-    studentName: state.user.name,
-    files: attachments,
-    note: note || '',
-    submittedAt: Date.now()
+  const fieldPath = `submissions.${assignmentId}.${state.user.uid}`;
+  await updateDoc(doc(dbFire,'classes',classId), {
+    [fieldPath]: {
+      studentName: state.user.name,
+      files: attachments,
+      note: note || '',
+      submittedAt: new Date().toISOString()
+    }
   });
 }
 
@@ -1440,20 +1283,21 @@ async function removeSubmissionAttachmentFn(classId, assignmentId, attIndex){
   if(!mySub) return;
   const removedAtt = (mySub.files||[])[attIndex];
   const files = (mySub.files||[]).filter((_,i)=> i!==attIndex);
-  await updateDoc(doc(dbFire,'classes',classId,'assignments',assignmentId,'submissions',state.user.uid), { files });
+  const fieldPath = `submissions.${assignmentId}.${state.user.uid}.files`;
+  await updateDoc(doc(dbFire,'classes',classId), { [fieldPath]: files });
   if(removedAtt) deleteAttachmentFromDrive(removedAtt.driveFileId);
 }
 
 async function addStudentFn(classId, name){
-  const studentId = uid('s');
-  await setDoc(doc(dbFire,'classes',classId,'students',studentId), { classId, id: studentId, name });
+  await updateDoc(doc(dbFire,'classes',classId), {
+    students: arrayUnion({ id: uid('s'), name })
+  });
 }
 
 async function postAnnouncementFn(classId, postId, text, attachments){
   const time = new Date().toLocaleString('en', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
-  await setDoc(doc(dbFire,'classes',classId,'stream',postId), {
-    classId, id: postId, author: state.user.name, time, text,
-    attachments: attachments || [], createdAt: Date.now()
+  await updateDoc(doc(dbFire,'classes',classId), {
+    stream: arrayUnion({ id: postId, author: state.user.name, time, text, attachments: attachments || [] })
   });
 }
 
@@ -1462,27 +1306,30 @@ async function removeStreamAttachmentFn(classId, postId, attIndex){
   if(!c) return;
   const post = c.stream.find(p=>p.id===postId);
   const att = post && post.attachments && post.attachments[attIndex];
-  const attachments = (post && post.attachments || []).filter((_,i)=> i!==attIndex);
-  await updateDoc(doc(dbFire,'classes',classId,'stream',postId), { attachments });
+  const stream = c.stream.map(p=>{
+    if(p.id !== postId) return p;
+    return { ...p, attachments: (p.attachments||[]).filter((_,i)=> i!==attIndex) };
+  });
+  await updateDoc(doc(dbFire,'classes',classId), { stream });
   if(att) deleteAttachmentFromDrive(att.driveFileId);
 }
 
 /* ---------------- Whiteboard Firestore helpers ----------------
    Only the class owner (teacher) ever draws / manages boards & pages —
-   students only ever read (and, locally, pick which board/page to look at).
+   this matches the existing security rules, where a non-owner update is
+   only allowed if it touches memberUids / students / stream / submissions.
+   Students only ever read (and, locally, pick which board/page to look at).
 
-   Shape (unchanged from the UI's point of view): whiteboard: { activeBoardId,
-   boards: [{ id, code, name, createdAt, activePageId, pages: [{ id, name,
-   strokes, liveStroke, archivedChunks }] }] } — but each board now lives at
-   its OWN document, classes/{classId}/whiteboardBoards/{boardId}, instead of
-   being one entry in a `whiteboard.boards` array embedded in the class doc.
-   That means every mutation below only ever reads/writes the single board
-   being drawn on — a stroke on Board 2 no longer has to rewrite Board 1's
-   data (or any other board's) to get committed, which is both faster and
-   removes any risk of boards colliding/overwriting each other's history.
-   `pages` (and their strokes) still live embedded inside their board's
-   document, addressed the same "rebuild this one array field" way as
-   before — just scoped to one board's document instead of the whole class.
+   Shape: whiteboard: { activeBoardId, boards: [{ id, code, name, createdAt,
+   activePageId, pages: [{ id, name, strokes, liveStroke, archivedChunks }] }] }
+
+   IMPORTANT: Firestore does NOT support addressing individual elements of a
+   real array via dotted field paths in updateDoc() (e.g. "whiteboard.boards.2.pages.0.strokes").
+   That silently fails / gets rejected, which is what was breaking drawing —
+   the write would fail, Firestore would roll the local doc back, and the
+   board would appear to vanish mid-stroke. Every mutation below instead
+   rebuilds the whole `boards` array client-side and writes it back as a
+   single `whiteboard.boards` field, which Firestore supports fine.
 
    Undo/redo is a client-local buffer (per board+page, per browser tab) that
    pops/pushes onto the shared `strokes` array — keeps the synced data model
@@ -1491,70 +1338,84 @@ async function removeStreamAttachmentFn(classId, postId, attIndex){
    Archiving: once a page's live `strokes` array passes MAX_STROKES, the
    oldest strokes are moved out to a JSON file in Drive (via archiveStrokes)
    and replaced with a lightweight pointer in `archivedChunks`. This keeps
-   each board document small and the realtime listener payload light, while
+   the Firestore doc small and the realtime listener payload light, while
    preserving full whiteboard history — viewers can load it on demand with
    "Load earlier drawings".
 ------------------------------------------------------------- */
 function redoKey(boardId, pageId){ return boardId + ':' + pageId; }
 function archiveKey(boardId, pageId){ return boardId + ':' + pageId; }
-function boardDocRef(classId, boardId){ return doc(dbFire,'classes',classId,'whiteboardBoards',boardId); }
 
 async function createBoardFn(classId, name){
   const c = getClass(classId);
-  const boardCount = c ? c.whiteboard.boards.length : 0;
-  const boardId = uid('wbb');
+  const wb = getWhiteboard(c);
   const page = { id: uid('page'), name:'Page 1', strokes:[], liveStroke:null, archivedChunks:[] };
-  await setDoc(boardDocRef(classId, boardId), {
-    classId, code: genBoardCode(), name: name || ('Board ' + (boardCount+1)),
-    createdAt: Date.now(), activePageId: page.id, pages:[page]
-  });
-  await updateDoc(doc(dbFire,'classes',classId), { whiteboardActiveBoardId: boardId });
-  return boardId;
+  const board = { id: uid('wbb'), code: genBoardCode(), name: name || ('Board ' + (wb.boards.length+1)), createdAt: new Date().toISOString(), activePageId: page.id, pages:[page] };
+  const boards = [...wb.boards, board];
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards, 'whiteboard.activeBoardId': board.id });
+  return board.id;
 }
 
 async function openBoardLiveFn(classId, boardId){
   // Teacher opening a board makes it the "live" one broadcast to students.
-  await updateDoc(doc(dbFire,'classes',classId), { whiteboardActiveBoardId: boardId });
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.activeBoardId': boardId });
 }
 
 async function deleteBoardFn(classId, boardId){
   const c = getClass(classId);
-  const wb = c.whiteboard;
-  await deleteDoc(boardDocRef(classId, boardId));
-  if(wb.activeBoardId === boardId){
-    const remaining = wb.boards.filter(b=>b.id!==boardId);
-    await updateDoc(doc(dbFire,'classes',classId), { whiteboardActiveBoardId: remaining[0] ? remaining[0].id : null });
-  }
+  const wb = getWhiteboard(c);
+  const boards = wb.boards.filter(b=>b.id!==boardId);
+  const activeBoardId = wb.activeBoardId===boardId ? (boards[0] ? boards[0].id : null) : wb.activeBoardId;
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards, 'whiteboard.activeBoardId': activeBoardId });
 }
 
 async function switchWbPageFn(classId, boardId, pageId){
-  await updateDoc(boardDocRef(classId, boardId), { activePageId: pageId });
+  const c = getClass(classId);
+  const wb = getWhiteboard(c);
+  const bIdx = boardIndex(wb, boardId);
+  if(bIdx < 0) return;
+  const boards = wb.boards.map((b,i)=> i===bIdx ? { ...b, activePageId: pageId } : b);
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards });
 }
 
 async function addWbPageFn(classId, boardId){
-  const board = getBoard(getClass(classId), boardId);
-  if(!board) return;
+  const c = getClass(classId);
+  const wb = getWhiteboard(c);
+  const bIdx = boardIndex(wb, boardId);
+  if(bIdx < 0) return;
+  const board = wb.boards[bIdx];
   const newPage = { id: uid('page'), name: 'Page ' + (board.pages.length+1), strokes:[], liveStroke:null, archivedChunks:[] };
-  await updateDoc(boardDocRef(classId, boardId), { pages:[...board.pages, newPage], activePageId: newPage.id });
+  const boards = wb.boards.map((b,i)=> i===bIdx ? { ...b, pages:[...b.pages, newPage], activePageId: newPage.id } : b);
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards });
 }
 
 async function deleteWbPageFn(classId, boardId, pageId){
-  const board = getBoard(getClass(classId), boardId);
-  if(!board || board.pages.length <= 1) return; // keep at least one page
+  const c = getClass(classId);
+  const wb = getWhiteboard(c);
+  const bIdx = boardIndex(wb, boardId);
+  if(bIdx < 0) return;
+  const board = wb.boards[bIdx];
+  if(board.pages.length <= 1) return; // keep at least one page
   const pages = board.pages.filter(p=>p.id!==pageId);
   const activePageId = board.activePageId===pageId ? pages[0].id : board.activePageId;
-  await updateDoc(boardDocRef(classId, boardId), { pages, activePageId });
+  const boards = wb.boards.map((b,i)=> i===bIdx ? { ...b, pages, activePageId } : b);
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards });
   delete wbRedoStacks[redoKey(boardId, pageId)];
   delete wbLoadedArchives[archiveKey(boardId, pageId)];
 }
 
 async function pushLiveStroke(classId, boardId, pageId, strokeObj){
-  const board = getBoard(getClass(classId), boardId);
-  if(!board) return;
-  const pIdx = pageIndexInBoard(board, pageId);
+  const c = getClass(classId);
+  const wb = getWhiteboard(c);
+  const bIdx = boardIndex(wb, boardId);
+  if(bIdx < 0) return;
+  const pIdx = pageIndexInBoard(wb.boards[bIdx], pageId);
   if(pIdx < 0) return;
-  const pages = board.pages.map((p,pi)=> pi===pIdx ? { ...p, liveStroke: strokeObj } : p);
-  await updateDoc(boardDocRef(classId, boardId), { pages });
+  const boards = wb.boards.map((b,bi)=>{
+    if(bi!==bIdx) return b;
+    const pages = b.pages.map((p,pi)=> pi===pIdx ? { ...p, liveStroke: strokeObj } : p);
+    return { ...b, pages };
+  });
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards });
 }
 
 // Moves the oldest `count` strokes of a page out to a Drive JSON file and
@@ -1575,8 +1436,11 @@ async function archiveOldestStrokes(classId, boardId, pageId, strokesToArchive){
 }
 
 async function commitStroke(classId, boardId, pageId, strokeObj){
-  const board = getBoard(getClass(classId), boardId);
-  if(!board) return;
+  const c = getClass(classId);
+  const wb = getWhiteboard(c);
+  const bIdx = boardIndex(wb, boardId);
+  if(bIdx < 0) return;
+  const board = wb.boards[bIdx];
   const pIdx = pageIndexInBoard(board, pageId);
   if(pIdx < 0) return;
   const page = board.pages[pIdx];
@@ -1592,14 +1456,21 @@ async function commitStroke(classId, boardId, pageId, strokeObj){
     if(chunkPointer) archivedChunks = [...archivedChunks, chunkPointer];
   }
 
-  const pages = board.pages.map((p,pi)=> pi===pIdx ? { ...p, strokes, liveStroke: null, archivedChunks } : p);
-  await updateDoc(boardDocRef(classId, boardId), { pages });
+  const boards = wb.boards.map((b,bi)=>{
+    if(bi!==bIdx) return b;
+    const pages = b.pages.map((p,pi)=> pi===pIdx ? { ...p, strokes, liveStroke: null, archivedChunks } : p);
+    return { ...b, pages };
+  });
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards });
   wbRedoStacks[redoKey(boardId, pageId)] = []; // a fresh stroke invalidates redo history
 }
 
 async function undoStrokeFn(classId, boardId, pageId){
-  const board = getBoard(getClass(classId), boardId);
-  if(!board) return;
+  const c = getClass(classId);
+  const wb = getWhiteboard(c);
+  const bIdx = boardIndex(wb, boardId);
+  if(bIdx < 0) return;
+  const board = wb.boards[bIdx];
   const pIdx = pageIndexInBoard(board, pageId);
   if(pIdx < 0) return;
   const page = board.pages[pIdx];
@@ -1609,13 +1480,20 @@ async function undoStrokeFn(classId, boardId, pageId){
   const key = redoKey(boardId, pageId);
   if(!wbRedoStacks[key]) wbRedoStacks[key] = [];
   wbRedoStacks[key].push(removed);
-  const pages = board.pages.map((p,pi)=> pi===pIdx ? { ...p, strokes, liveStroke: null } : p);
-  await updateDoc(boardDocRef(classId, boardId), { pages });
+  const boards = wb.boards.map((b,bi)=>{
+    if(bi!==bIdx) return b;
+    const pages = b.pages.map((p,pi)=> pi===pIdx ? { ...p, strokes, liveStroke: null } : p);
+    return { ...b, pages };
+  });
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards });
 }
 
 async function redoStrokeFn(classId, boardId, pageId){
-  const board = getBoard(getClass(classId), boardId);
-  if(!board) return;
+  const c = getClass(classId);
+  const wb = getWhiteboard(c);
+  const bIdx = boardIndex(wb, boardId);
+  if(bIdx < 0) return;
+  const board = wb.boards[bIdx];
   const pIdx = pageIndexInBoard(board, pageId);
   if(pIdx < 0) return;
   const key = redoKey(boardId, pageId);
@@ -1623,17 +1501,27 @@ async function redoStrokeFn(classId, boardId, pageId){
   if(!redoStack.length) return;
   const stroke = redoStack.pop();
   const strokes = [...(board.pages[pIdx].strokes||[]), stroke];
-  const pages = board.pages.map((p,pi)=> pi===pIdx ? { ...p, strokes, liveStroke: null } : p);
-  await updateDoc(boardDocRef(classId, boardId), { pages });
+  const boards = wb.boards.map((b,bi)=>{
+    if(bi!==bIdx) return b;
+    const pages = b.pages.map((p,pi)=> pi===pIdx ? { ...p, strokes, liveStroke: null } : p);
+    return { ...b, pages };
+  });
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards });
 }
 
 async function clearAllFn(classId, boardId, pageId){
-  const board = getBoard(getClass(classId), boardId);
-  if(!board) return;
-  const pIdx = pageIndexInBoard(board, pageId);
+  const c = getClass(classId);
+  const wb = getWhiteboard(c);
+  const bIdx = boardIndex(wb, boardId);
+  if(bIdx < 0) return;
+  const pIdx = pageIndexInBoard(wb.boards[bIdx], pageId);
   if(pIdx < 0) return;
-  const pages = board.pages.map((p,pi)=> pi===pIdx ? { ...p, strokes: [], liveStroke: null, archivedChunks: [] } : p);
-  await updateDoc(boardDocRef(classId, boardId), { pages });
+  const boards = wb.boards.map((b,bi)=>{
+    if(bi!==bIdx) return b;
+    const pages = b.pages.map((p,pi)=> pi===pIdx ? { ...p, strokes: [], liveStroke: null, archivedChunks: [] } : p);
+    return { ...b, pages };
+  });
+  await updateDoc(doc(dbFire,'classes',classId), { 'whiteboard.boards': boards });
   wbRedoStacks[redoKey(boardId, pageId)] = [];
   delete wbLoadedArchives[archiveKey(boardId, pageId)];
 }
@@ -1688,14 +1576,11 @@ async function exportBoardToDrive(classId, board){
 }
 
 async function updateGradeFn(classId, studentId, assignmentId, val){
-  const ref = doc(dbFire,'classes',classId,'grades',studentId);
+  const fieldPath = `grades.${studentId}.${assignmentId}`;
   if(val === null){
-    // deleteField() requires the doc (and field) to already exist — if this
-    // student has no grade doc yet there's nothing to clear, so skip safely.
-    try{ await updateDoc(ref, { [`scores.${assignmentId}`]: deleteField() }); }
-    catch(e){ /* no existing grade doc for this student — nothing to delete */ }
+    await updateDoc(doc(dbFire,'classes',classId), { [fieldPath]: deleteField() });
   }else{
-    await setDoc(ref, { classId, studentId, scores: { [assignmentId]: val } }, { merge: true });
+    await updateDoc(doc(dbFire,'classes',classId), { [fieldPath]: val });
   }
 }
 
@@ -1737,19 +1622,10 @@ onAuthStateChanged(auth, (user)=>{
     render();
     listenClasses();
   }else{
-    if(unsubClassOwned) unsubClassOwned();
-    if(unsubClassMember) unsubClassMember();
-    if(unsubAssignments) unsubAssignments();
-    if(unsubStream) unsubStream();
-    if(unsubStudents) unsubStudents();
-    if(unsubGrades) unsubGrades();
-    detachClassDetailListeners();
+    if(unsubOwned) unsubOwned();
+    if(unsubMember) unsubMember();
     state.user = null; state.view='dashboard'; state.activeClassId=null; state.connStatus='idle';
-    db.classes = [];
-    classMetaOwned = {}; classMetaMember = {}; classMeta = {};
-    assignmentsByClass = {}; streamByClass = {}; studentsByClass = {}; gradesByClass = {};
-    submissionsByClass = {}; boardsByClass = {};
-    ownedLoaded = false; memberLoaded = false; lastAggregateClassIds = null;
+    db.classes = []; ownedMap = {}; memberMap = {}; ownedLoaded = false; memberLoaded = false;
     document.getElementById('app').classList.add('login-hidden');
     document.getElementById('loginScreen').classList.remove('login-hidden');
     showInstallButtons();
@@ -2772,17 +2648,11 @@ document.addEventListener('keydown', (e)=>{
 /* ---------------- Events ---------------- */
 function bindGlobalEvents(){
   document.querySelectorAll('[data-nav]').forEach(el=>{
-    el.addEventListener('click', ()=>{
-      state.view = el.dataset.nav;
-      detachClassDetailListeners(); // leaving a class view — stop listening to its submissions/whiteboard boards
-      render();
-    });
+    el.addEventListener('click', ()=>{ state.view = el.dataset.nav; render(); });
   });
   document.querySelectorAll('[data-open-class]').forEach(el=>{
     el.addEventListener('click', ()=>{
-      state.view='class'; state.activeClassId = el.dataset.openClass; state.classTab='stream';
-      attachClassDetailListeners(state.activeClassId);
-      render();
+      state.view='class'; state.activeClassId = el.dataset.openClass; state.classTab='stream'; render();
     });
   });
   document.querySelectorAll('[data-classtab]').forEach(el=>{
@@ -2834,7 +2704,6 @@ function bindGlobalEvents(){
       try{
         await deleteClassFn(cid);
         state.view = 'dashboard'; state.activeClassId = null;
-        detachClassDetailListeners();
         render();
       }catch(e){
         console.error('Delete class failed', e);
@@ -3165,7 +3034,6 @@ document.addEventListener('click', async (e)=>{
       const newId = await createClassFn(name, section, room, color);
       closeModal();
       state.view='class'; state.activeClassId = newId; state.classTab='stream';
-      attachClassDetailListeners(newId);
       render();
     }catch(err){ console.error('Create class failed', err); }
   }
@@ -3177,7 +3045,6 @@ document.addEventListener('click', async (e)=>{
     if(res.ok){
       closeModal();
       state.view='class'; state.activeClassId = res.classId; state.classTab='stream';
-      attachClassDetailListeners(res.classId);
       render();
     }else{
       errEl.style.display='block';
