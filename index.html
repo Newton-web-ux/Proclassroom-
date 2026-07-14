@@ -1213,6 +1213,41 @@ async function updateAssignmentFn(classId, assignmentId, updates){
   await updateDoc(doc(dbFire,'classes',classId), { assignments });
 }
 
+/* Permanently deletes an assignment: removes it from the assignments array,
+   strips any recorded grades for it from every student's grade map, and
+   removes its submissions bucket entirely — then best-effort cleans up every
+   Drive file involved (the assignment's own attachments, plus every
+   student's submitted files) now that the Firestore doc no longer points to
+   them. Same "rebuild the whole object client-side" approach as everywhere
+   else here, since Firestore updateDoc() can't address individual array
+   elements or map keys via dotted paths reliably for this shape. */
+async function deleteAssignmentFn(classId, assignmentId){
+  const c = getClass(classId);
+  if(!c) return;
+  const target = c.assignments.find(a=>a.id===assignmentId);
+  const assignments = c.assignments.filter(a=>a.id!==assignmentId);
+
+  const grades = {};
+  Object.entries(c.grades || {}).forEach(([sid, g])=>{
+    const rest = { ...g };
+    delete rest[assignmentId];
+    grades[sid] = rest;
+  });
+
+  const removedSubs = (c.submissions || {})[assignmentId];
+  const submissions = { ...(c.submissions || {}) };
+  delete submissions[assignmentId];
+
+  await updateDoc(doc(dbFire,'classes',classId), { assignments, grades, submissions });
+
+  if(target) (target.attachments || []).forEach(att=> deleteAttachmentFromDrive(att.driveFileId));
+  if(removedSubs){
+    Object.values(removedSubs).forEach(sub=>{
+      (sub.files || []).forEach(att=> deleteAttachmentFromDrive(att.driveFileId));
+    });
+  }
+}
+
 async function removeAssignmentAttachmentFn(classId, assignmentId, attIndex){
   const c = getClass(classId);
   if(!c) return;
@@ -2188,9 +2223,14 @@ function renderClasswork(c){
               ${mySub? 'View / resubmit' : 'Submit work'}
             </button>
           ` : `
-            <button class="btn btn-ghost" data-modal="editAssignment" data-preset-class="${c.id}" data-preset-assignment="${a.id}" style="width:100%; justify-content:center; margin-top:10px;">
-              &#9998; Edit / change total marks
-            </button>
+            <div style="display:flex; gap:8px; margin-top:10px;">
+              <button class="btn btn-ghost" data-modal="editAssignment" data-preset-class="${c.id}" data-preset-assignment="${a.id}" style="flex:1; justify-content:center;">
+                &#9998; Edit
+              </button>
+              <button class="btn btn-ghost" data-delete-assignment="${a.id}" data-class="${c.id}" title="Delete assignment" style="color:var(--red-pen); border-color:var(--line-strong); padding:9px 12px;">
+                &#128465;
+              </button>
+            </div>
             <details class="wc-submissions">
               <summary>${subCount}/${c.students.length} submitted</summary>
               <div class="wc-sub-list">
@@ -2670,6 +2710,30 @@ function bindGlobalEvents(){
         el.disabled = false;
         el.textContent = original;
         alert('Could not delete the class. Please try again.');
+      }
+    });
+  });
+  document.querySelectorAll('[data-delete-assignment]').forEach(el=>{
+    el.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const aid = el.dataset.deleteAssignment;
+      const cid = el.dataset.class;
+      const c = getClass(cid);
+      const a = c ? c.assignments.find(x=>x.id===aid) : null;
+      const title = a ? a.title : 'this assignment';
+      if(!confirm(`Delete "${title}"? This removes its attachments, all student submissions, and any recorded grades for it. This cannot be undone.`)) return;
+      const original = el.innerHTML;
+      el.disabled = true;
+      el.innerHTML = '…';
+      try{
+        await deleteAssignmentFn(cid, aid);
+        // Firestore's realtime listener will re-render the classwork list once the
+        // write lands; nothing else to do here on success.
+      }catch(err){
+        console.error('Delete assignment failed', err);
+        el.disabled = false;
+        el.innerHTML = original;
+        alert('Could not delete the assignment. Please try again.');
       }
     });
   });
