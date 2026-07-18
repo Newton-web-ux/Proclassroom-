@@ -5,9 +5,16 @@
 
    Strategy: network-first for the app shell (so a redeploy is picked up
    immediately when online), falling back to the cache when offline.
+
+   IMPORTANT: cache.addAll() is all-or-nothing — if a single app-shell file
+   404s, the whole install step rejects, the service worker never reaches
+   "activated", and Chrome's install (beforeinstallprompt) criteria are
+   never met even though everything else looks fine. This version caches
+   each file individually with Promise.allSettled so one missing/renamed
+   asset can't silently break installability for the rest of the app.
 */
 
-const CACHE_NAME = 'pro-classroom-shell-v1';
+const CACHE_NAME = 'pro-classroom-shell-v2';
 const APP_SHELL = [
   './',
   './index.html',
@@ -19,9 +26,22 @@ const APP_SHELL = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then(async (cache) => {
+      const results = await Promise.allSettled(
+        APP_SHELL.map((url) =>
+          fetch(url, { cache: 'no-store' }).then((res) => {
+            if (!res.ok) throw new Error(`${url} -> HTTP ${res.status}`);
+            return cache.put(url, res);
+          })
+        )
+      );
+      results.forEach((r, i) => {
+        if (r.status === 'rejected') {
+          console.warn('[sw] Skipped caching', APP_SHELL[i], r.reason);
+        }
+      });
+      return self.skipWaiting();
+    })
   );
 });
 
