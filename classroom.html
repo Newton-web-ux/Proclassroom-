@@ -1,0 +1,3331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pro Classroom — Dashboard</title>
+<meta name="theme-color" content="#1F3A2E" />
+<meta name="description" content="Pro Classroom — a lightweight, Firebase-backed classroom dashboard." />
+<link rel="manifest" href="./manifest.json" />
+<link rel="icon" href="./icons/icon-192.png" />
+<link rel="apple-touch-icon" href="./icons/icon-192.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1F3A2E;
+    --ink-2:#16281F;
+    --parchment:#F6F1E4;
+    --paper:#FFFDF7;
+    --ochre:#C68E17;
+    --ochre-2:#E4A62B;
+    --red-pen:#A6373B;
+    --chalk:#F1EDE0;
+    --line: rgba(31,58,46,0.14);
+    --line-strong: rgba(31,58,46,0.28);
+    --shadow: 0 1px 2px rgba(31,58,46,.06), 0 6px 20px rgba(31,58,46,.08);
+    --radius: 10px;
+    --sidebar-w: 260px;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--parchment);
+    color:var(--ink-2);
+    font-family:'Inter',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,.display{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    letter-spacing:-0.01em;
+  }
+  .mono{ font-family:'IBM Plex Mono', monospace; }
+  button{ font-family:inherit; cursor:pointer; }
+  a{ color:inherit; text-decoration:none; }
+
+  /* ---------- Layout ---------- */
+  #app{ display:flex; min-height:100vh; }
+
+  /* ---------- Sidebar ---------- */
+  .sidebar{
+    width:var(--sidebar-w);
+    flex-shrink:0;
+    background:var(--ink);
+    color:var(--chalk);
+    display:flex;
+    flex-direction:column;
+    padding:22px 0 16px;
+    position:sticky;
+    top:0;
+    height:100vh;
+    overflow-y:auto;
+  }
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:0 20px 20px;
+    border-bottom:1px solid rgba(241,237,224,.14);
+    margin-bottom:14px;
+  }
+  .brand .mark{
+    width:34px;height:34px;border-radius:8px;
+    background:linear-gradient(155deg, var(--ochre-2), var(--ochre));
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Fraunces',serif; font-weight:700; color:var(--ink-2); font-size:18px;
+    flex-shrink:0;
+  }
+  .brand .name{ font-family:'Fraunces',serif; font-size:19px; font-weight:600; line-height:1.1;}
+  .brand .tag{ font-size:11px; color:rgba(241,237,224,.55); margin-top:2px; letter-spacing:.03em; text-transform:uppercase;}
+
+  .nav-section{ padding:4px 12px; }
+  .nav-label{
+    font-size:10.5px; text-transform:uppercase; letter-spacing:.09em;
+    color:rgba(241,237,224,.45); padding:14px 10px 6px;
+  }
+  .nav-item{
+    display:flex; align-items:center; gap:10px;
+    padding:9px 10px; border-radius:7px; margin:1px 0;
+    color:rgba(241,237,224,.85); font-size:14px; font-weight:500;
+    border:none; background:transparent; width:100%; text-align:left;
+    transition:background .12s;
+  }
+  .nav-item:hover{ background:rgba(241,237,224,.08); }
+  .nav-item.active{ background:rgba(241,237,224,.14); color:#fff; }
+  .nav-item .ic{ width:17px; text-align:center; opacity:.9; font-size:14px; }
+  .nav-item .count{
+    margin-left:auto; font-family:'IBM Plex Mono',monospace; font-size:11px;
+    background:rgba(241,237,224,.14); padding:1px 6px; border-radius:20px;
+  }
+
+  .class-tab{
+    display:flex; align-items:center; gap:9px;
+    padding:8px 10px 8px 8px; border-radius:0 7px 7px 0; margin:2px 0 2px 0;
+    border-left:3px solid transparent;
+    color:rgba(241,237,224,.85); font-size:13.5px; font-weight:500;
+    background:transparent; width:100%; text-align:left; border-top:none;border-right:none;border-bottom:none;
+    position:relative;
+  }
+  .class-tab .swatch{ width:9px;height:9px;border-radius:2px; flex-shrink:0; }
+  .class-tab:hover{ background:rgba(241,237,224,.07); }
+  .class-tab.active{ background:rgba(241,237,224,.14); border-left-color:var(--ochre-2); color:#fff; }
+  .class-tab .ct-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .class-tab .ct-role{ margin-left:auto; font-size:9.5px; text-transform:uppercase; letter-spacing:.04em; color:rgba(241,237,224,.4); flex-shrink:0; }
+
+  .sidebar-foot{ margin-top:auto; padding:14px 20px 4px; display:flex; flex-direction:column; gap:8px; }
+  .new-class-btn{
+    width:100%; padding:9px 10px; border-radius:7px; border:1px dashed rgba(241,237,224,.35);
+    background:transparent; color:rgba(241,237,224,.75); font-size:13px; font-weight:500;
+  }
+  .new-class-btn:hover{ background:rgba(241,237,224,.08); color:#fff; }
+
+  /* ---------- Main ---------- */
+  .main{ flex:1; min-width:0; display:flex; flex-direction:column; }
+  .topbar{
+    display:flex; align-items:center; gap:16px;
+    padding:14px 28px; background:var(--paper);
+    border-bottom:1px solid var(--line);
+    position:sticky; top:0; z-index:5;
+  }
+  .search{
+    flex:1; max-width:420px;
+    display:flex; align-items:center; gap:8px;
+    background:var(--parchment); border:1px solid var(--line);
+    border-radius:8px; padding:8px 12px; font-size:13.5px; color:#5b6b60;
+  }
+  .search input{ border:none; background:transparent; outline:none; font-size:13.5px; width:100%; font-family:inherit; color:var(--ink-2);}
+  .topbar-actions{ margin-left:auto; display:flex; align-items:center; gap:12px; }
+  .btn{
+    padding:9px 15px; border-radius:7px; border:1px solid transparent;
+    font-size:13.5px; font-weight:600; display:inline-flex; align-items:center; gap:7px;
+  }
+  .btn-primary{ background:var(--ink); color:var(--chalk); }
+  .btn-primary:hover{ background:var(--ink-2); }
+  .btn-ghost{ background:transparent; border-color:var(--line-strong); color:var(--ink-2); }
+  .btn-ghost:hover{ background:var(--parchment); }
+  .avatar{
+    width:34px;height:34px;border-radius:50%;
+    background:var(--ochre); color:#fff; font-weight:700; font-size:13px;
+    display:flex;align-items:center;justify-content:center; font-family:'Fraunces',serif;
+    flex-shrink:0;
+  }
+  .sync-indicator{
+    font-size:11.5px; font-weight:600; color:#8b978e; white-space:nowrap;
+  }
+  .sync-indicator.sync-saving{ color:var(--ochre); }
+  .sync-indicator.sync-saved{ color:#2A6B3E; }
+  .sync-indicator.sync-error{ color:var(--red-pen); }
+
+  .plan-badge{
+    display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:20px;
+    font-size:11.5px; font-weight:700; white-space:nowrap; text-decoration:none;
+    background:var(--parchment); border:1px solid var(--line-strong); color:var(--ink-2);
+  }
+  .plan-badge:hover{ border-color:var(--ochre); }
+  .plan-badge.is-pro{ background:linear-gradient(155deg, var(--ochre-2), var(--ochre)); color:var(--ink-2); border-color:transparent; }
+
+  .limit-toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--ink); color:var(--chalk); padding:13px 18px; border-radius:12px;
+    font-size:13px; box-shadow:0 16px 40px rgba(0,0,0,.25); z-index:300;
+    display:flex; align-items:center; gap:14px; max-width:380px;
+    opacity:0; pointer-events:none; transition:opacity .18s ease, transform .18s ease;
+  }
+  .limit-toast.show{ opacity:1; pointer-events:auto; transform:translateX(-50%) translateY(0); }
+  .limit-toast a{ color:var(--ochre-2); font-weight:700; white-space:nowrap; flex-shrink:0; }
+
+  .content{ padding:28px 34px 60px; max-width:1180px; width:100%; margin:0 auto; }
+
+  /* ---------- Dashboard ---------- */
+  .page-head{ margin-bottom:22px; }
+  .page-head .eyebrow{ font-size:11.5px; text-transform:uppercase; letter-spacing:.09em; color:var(--ochre); font-weight:700; margin-bottom:4px;}
+  .page-head h1{ font-size:28px; margin:0; color:var(--ink); }
+  .page-head p{ margin:6px 0 0; color:#5b6b60; font-size:14px; }
+
+  .stat-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:26px; }
+  .stat-card{
+    background:var(--paper); border:1px solid var(--line); border-radius:var(--radius);
+    padding:16px 18px; box-shadow:var(--shadow);
+    position:relative; overflow:hidden;
+  }
+  .stat-card::before{
+    content:''; position:absolute; top:0; left:0; width:4px; height:100%; background:var(--stat-color, var(--ochre));
+  }
+  .stat-card .label{ font-size:12px; color:#5b6b60; font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+  .stat-card .value{ font-family:'Fraunces',serif; font-size:30px; font-weight:600; color:var(--ink); margin-top:6px; }
+  .stat-card .sub{ font-size:12px; color:#7b8a80; margin-top:3px; }
+
+  .dash-grid{ display:grid; grid-template-columns:1.5fr 1fr; gap:20px; align-items:start; }
+  .panel{
+    background:var(--paper); border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow); overflow:hidden;
+  }
+  .panel-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:15px 18px; border-bottom:1px solid var(--line);
+  }
+  .panel-head h3{ font-size:15.5px; margin:0; color:var(--ink); }
+  .panel-body{ padding:6px 0; }
+  .panel-body.pad{ padding:16px 18px; }
+
+  .ledger-row{
+    display:flex; align-items:center; gap:12px;
+    padding:11px 18px; border-bottom:1px solid var(--line);
+  }
+  .ledger-row:last-child{ border-bottom:none; }
+  .ledger-row:hover{ background:rgba(198,142,23,.05); }
+  .due-chip{
+    width:38px;height:38px;border-radius:8px; flex-shrink:0;
+    background:var(--parchment); border:1px solid var(--line);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-family:'IBM Plex Mono',monospace; line-height:1;
+  }
+  .due-chip .d{ font-size:13px; font-weight:600; color:var(--ink); }
+  .due-chip .m{ font-size:8.5px; color:#7b8a80; text-transform:uppercase; }
+  .ledger-row .r-title{ font-size:13.5px; font-weight:600; color:var(--ink-2); }
+  .ledger-row .r-sub{ font-size:12px; color:#7b8a80; margin-top:2px; }
+  .ledger-row .r-right{ margin-left:auto; text-align:right; }
+  .pill{
+    font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:20px;
+    text-transform:uppercase; letter-spacing:.03em;
+  }
+  .pill-warn{ background:#FBEBD9; color:#95610A; }
+  .pill-ok{ background:#E1EEE3; color:#2A6B3E; }
+  .pill-late{ background:#F6DEDF; color:var(--red-pen); }
+
+  .activity-item{ display:flex; gap:11px; padding:11px 18px; border-bottom:1px solid var(--line); }
+  .activity-item:last-child{ border-bottom:none; }
+  .activity-dot{ width:8px;height:8px;border-radius:50%; background:var(--ochre); margin-top:6px; flex-shrink:0;}
+  .activity-item .a-text{ font-size:13px; color:var(--ink-2); line-height:1.45; }
+  .activity-item .a-text b{ font-weight:600; }
+  .activity-item .a-time{ font-size:11px; color:#8b978e; margin-top:2px; }
+
+  .chart-wrap{ padding:16px 18px 8px; }
+  .bar-row{ display:flex; align-items:center; gap:10px; margin-bottom:9px; }
+  .bar-label{ width:64px; font-size:11.5px; color:#5b6b60; flex-shrink:0; font-family:'IBM Plex Mono',monospace;}
+  .bar-track{ flex:1; height:9px; background:var(--parchment); border-radius:6px; overflow:hidden; }
+  .bar-fill{ height:100%; background:linear-gradient(90deg, var(--ochre), var(--ochre-2)); border-radius:6px; }
+  .bar-val{ width:32px; text-align:right; font-size:11.5px; font-weight:600; color:var(--ink); font-family:'IBM Plex Mono',monospace;}
+
+  /* ---------- Class tabs (in class view) ---------- */
+  .class-banner{
+    border-radius:var(--radius); padding:26px 26px; margin-bottom:0;
+    background: linear-gradient(135deg, var(--banner-color-1,#2C4A3B), var(--banner-color-2,#1F3A2E));
+    color:#fff; position:relative; overflow:hidden;
+  }
+  .class-banner::after{
+    content:''; position:absolute; right:-40px; bottom:-60px; width:220px;height:220px;
+    border:1px solid rgba(255,255,255,.12); border-radius:50%;
+  }
+  .class-banner .cb-sub{ font-size:12px; text-transform:uppercase; letter-spacing:.08em; opacity:.75; font-weight:600;}
+  .class-banner h1{ font-size:30px; margin:6px 0 4px; color:#fff; }
+  .class-banner .cb-meta{ font-size:13px; opacity:.85; }
+  .class-banner .cb-code{
+    display:inline-flex; align-items:center; gap:8px; margin-top:12px;
+    background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.2);
+    border-radius:20px; padding:6px 8px 6px 14px; font-size:12.5px;
+  }
+  .class-banner .cb-code b{ font-family:'IBM Plex Mono',monospace; letter-spacing:.1em; font-size:13px; }
+  .cb-code-btn{
+    border:none; background:rgba(255,255,255,.18); color:#fff; border-radius:14px;
+    padding:4px 10px; font-size:11px; font-weight:700;
+  }
+  .cb-code-btn:hover{ background:rgba(255,255,255,.3); }
+  .cb-delete-btn{
+    display:inline-flex; align-items:center; gap:6px; margin-top:12px; margin-left:10px;
+    background:rgba(166,55,59,.22); border:1px solid rgba(255,255,255,.25); color:#fff;
+    border-radius:20px; padding:6px 14px 6px 14px; font-size:12px; font-weight:700;
+  }
+  .cb-delete-btn:hover{ background:rgba(166,55,59,.4); }
+
+  .tab-strip{
+    display:flex; gap:4px; margin:18px 0 20px; border-bottom:1px solid var(--line-strong);
+  }
+  .tab-btn{
+    padding:10px 16px; border:none; background:transparent; font-size:13.5px; font-weight:600;
+    color:#7b8a80; border-bottom:2px solid transparent; margin-bottom:-1px;
+  }
+  .tab-btn.active{ color:var(--ink); border-bottom-color:var(--ochre); }
+  .tab-btn:hover{ color:var(--ink); }
+
+  .stream-compose{
+    display:flex; gap:12px; align-items:flex-start; padding:14px 18px; background:var(--paper);
+    border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:16px;
+  }
+  .stream-compose .avatar{ margin-top:2px; }
+  .stream-compose-main{ flex:1; min-width:0; display:flex; flex-direction:column; gap:8px; }
+  .stream-compose input{
+    width:100%; border:none; background:var(--parchment); border-radius:8px; padding:10px 12px;
+    font-size:13.5px; outline:none; font-family:inherit;
+  }
+  .stream-compose-foot{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .stream-attach-btn{
+    display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600;
+    color:var(--ink-2); background:var(--parchment); border:1px solid var(--line-strong);
+    border-radius:7px; padding:6px 11px; cursor:pointer; flex-shrink:0;
+  }
+  .stream-attach-btn:hover{ border-color:var(--ochre); }
+  .stream-item{
+    background:var(--paper); border:1px solid var(--line); border-radius:var(--radius);
+    padding:15px 18px; margin-bottom:12px; box-shadow:var(--shadow);
+  }
+  .stream-item .si-head{ display:flex; align-items:center; gap:10px; margin-bottom:8px;}
+  .stream-item .si-name{ font-size:13.5px; font-weight:700; color:var(--ink); }
+  .stream-item .si-time{ font-size:11.5px; color:#8b978e; }
+  .stream-item .si-body{ font-size:13.5px; color:var(--ink-2); line-height:1.55; }
+
+  .card-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:14px; }
+  .work-card{
+    background:var(--paper); border:1px solid var(--line); border-radius:var(--radius);
+    padding:16px 17px; box-shadow:var(--shadow); position:relative;
+  }
+  .work-card .wc-icon{
+    width:36px;height:36px;border-radius:8px; background:var(--parchment);
+    display:flex;align-items:center;justify-content:center; font-size:16px; margin-bottom:10px;
+  }
+  .work-card h4{ margin:0 0 4px; font-size:14.5px; font-family:'Fraunces',serif; color:var(--ink); }
+  .work-card .wc-meta{ font-size:12px; color:#7b8a80; }
+  .work-card .wc-desc{ font-size:12.5px; color:var(--ink-2); margin-top:8px; line-height:1.5; }
+  .wc-attachments{ display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }
+  .wc-attach-item{ position:relative; display:inline-flex; flex-direction:column; align-items:center; gap:5px; }
+  .wc-attach-thumb{
+    width:76px; height:76px; border-radius:9px; overflow:hidden;
+    border:1px solid var(--line-strong); display:block; flex-shrink:0;
+    padding:0; background:var(--parchment); cursor:pointer; box-shadow:var(--shadow);
+    transition:border-color .12s, transform .12s;
+  }
+  .wc-attach-thumb:hover{ border-color:var(--ochre); transform:translateY(-1px); }
+  .wc-attach-thumb img{ width:100%; height:100%; object-fit:cover; display:block; pointer-events:none; }
+  .wc-attach-label{
+    font-size:10.5px; font-weight:600; color:#5b6b60; max-width:82px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center;
+  }
+  .wc-attach-chip{
+    font-size:12px; font-weight:600; color:var(--ink-2);
+    background:var(--paper); border:1px solid var(--line-strong); border-radius:9px;
+    padding:9px 12px; max-width:200px; box-shadow:var(--shadow);
+    display:inline-flex; align-items:center; gap:8px;
+  }
+  .wc-attach-chip .chip-ic{
+    width:28px; height:28px; border-radius:7px; background:var(--parchment);
+    display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0;
+  }
+  .wc-attach-chip .chip-text{ display:flex; flex-direction:column; overflow:hidden; text-align:left; min-width:0; }
+  .wc-attach-chip .chip-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .wc-attach-chip .chip-meta{ font-size:10px; font-weight:500; color:#8b978e; text-transform:uppercase; letter-spacing:.03em; }
+  .wc-attach-chip:hover{ border-color:var(--ochre); }
+  .wc-attach-chip.link-chip{ border-color:rgba(60,90,120,.35); }
+  .wc-attach-chip.link-chip .chip-ic{ background:rgba(60,90,120,.12); color:#3C5A78; }
+  .wc-attach-chip.link-chip:hover{ border-color:#3C5A78; }
+  .wc-attach-del{
+    position:absolute; top:-6px; right:-6px; width:19px; height:19px; border-radius:50%;
+    background:var(--red-pen); color:#fff; border:2px solid var(--paper); font-size:12px;
+    line-height:1; display:flex; align-items:center; justify-content:center; padding:0; z-index:2;
+  }
+  .wc-attach-del:hover{ background:#8a2d30; }
+  .link-insert-pop{
+    display:flex; flex-direction:column; gap:8px; background:var(--paper);
+    border:1px solid var(--line-strong); border-radius:9px; padding:12px;
+    box-shadow:var(--shadow); margin-top:8px; max-width:320px;
+  }
+  .link-insert-pop input{
+    border:1px solid var(--line-strong); border-radius:7px; padding:8px 10px;
+    font-size:12.5px; font-family:inherit; outline:none; background:var(--parchment);
+  }
+  .link-insert-pop input:focus{ border-color:var(--ochre); background:var(--paper); }
+  .link-insert-pop-foot{ display:flex; justify-content:flex-end; gap:8px; }
+  .link-insert-pop-foot button{ font-size:12px; font-weight:600; padding:6px 12px; border-radius:7px; }
+  .work-card .wc-foot{ display:flex; align-items:center; justify-content:space-between; margin-top:12px; gap:8px; }
+  .wc-submissions{ margin-top:10px; }
+  .wc-submissions summary{
+    cursor:pointer; font-size:12px; font-weight:700; color:var(--ink);
+    list-style:none; display:flex; align-items:center; gap:6px;
+  }
+  .wc-submissions summary::-webkit-details-marker{ display:none; }
+  .wc-submissions summary::before{ content:'▸'; color:#7b8a80; font-size:10px; }
+  .wc-submissions[open] summary::before{ content:'▾'; }
+  .wc-sub-list{ margin-top:8px; display:flex; flex-direction:column; gap:10px; }
+  .wc-sub-item{ background:var(--parchment); border-radius:8px; padding:9px 10px; }
+  .wc-sub-name{ font-size:12.5px; font-weight:700; color:var(--ink-2); margin-bottom:6px; }
+  .wc-sub-note{ font-size:12px; color:#5b6b60; margin-top:6px; font-style:italic; }
+
+  table.roster{ width:100%; border-collapse:collapse; }
+  table.roster th{
+    text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+    color:#7b8a80; padding:10px 14px; border-bottom:1px solid var(--line-strong); font-weight:700;
+  }
+  table.roster td{ padding:11px 14px; border-bottom:1px solid var(--line); font-size:13.5px; vertical-align:middle;}
+  table.roster tr:last-child td{ border-bottom:none; }
+  .stud-name{ display:flex; align-items:center; gap:10px; font-weight:600; color:var(--ink-2); }
+  .mini-avatar{
+    width:28px;height:28px;border-radius:50%; background:var(--ink); color:#fff;
+    display:flex;align-items:center;justify-content:center; font-size:11px; font-weight:700; font-family:'Fraunces',serif;
+    flex-shrink:0;
+  }
+
+  .gradebook-wrap{ overflow-x:auto; background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); }
+  table.gradebook{ border-collapse:collapse; width:100%; min-width:640px; }
+  table.gradebook th{
+    font-size:11px; text-transform:uppercase; color:#7b8a80; padding:10px 12px;
+    border-bottom:1px solid var(--line-strong); text-align:left; white-space:nowrap; font-weight:700;
+  }
+  table.gradebook td{ padding:8px 12px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  table.gradebook input.grade-input{
+    width:52px; text-align:center; border:1px solid var(--line); border-radius:6px; padding:5px 4px;
+    font-family:'IBM Plex Mono',monospace; font-size:12.5px; background:var(--parchment);
+  }
+  table.gradebook input.grade-input:focus{ outline:2px solid var(--ochre-2); border-color:transparent; }
+  .avg-cell{ font-family:'IBM Plex Mono',monospace; font-weight:700; color:var(--ink); }
+
+  /* ---------- Whiteboard ---------- */
+  .wb-board-card{
+    background:var(--paper); border:1px solid var(--line); border-radius:var(--radius);
+    padding:16px 17px; box-shadow:var(--shadow); position:relative; display:flex; flex-direction:column;
+  }
+  .wb-board-card.live{ border-color:var(--ochre); box-shadow:0 0 0 2px rgba(198,142,23,.18), var(--shadow); }
+  .wb-live-tag{
+    position:absolute; top:12px; right:12px; font-size:10px; font-weight:700; color:#2A6B3E;
+    background:#E1EEE3; border-radius:20px; padding:3px 9px; text-transform:uppercase; letter-spacing:.03em;
+  }
+  .wb-live-tag.static{ position:static; margin-left:8px; }
+  .wb-board-foot{ display:flex; align-items:center; gap:8px; margin-top:12px; }
+  .wb-board-del{
+    width:32px; height:32px; border-radius:7px; border:1px solid var(--line-strong); background:var(--paper);
+    color:var(--red-pen); font-size:16px; line-height:1; flex-shrink:0;
+  }
+  .wb-board-del:hover{ background:#F6DEDF; border-color:var(--red-pen); }
+  .wb-panel{ background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; }
+  .wb-board-head{ display:flex; align-items:center; gap:14px; padding:12px 16px; border-bottom:1px solid var(--line); background:var(--parchment); flex-wrap:wrap; }
+  .wb-board-title{ display:flex; align-items:center; gap:8px; font-size:14px; color:var(--ink-2); }
+  .wb-board-code{ font-size:11.5px; color:#7b8a80; background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:2px 8px; }
+  .wb-board-head #wbJumpLiveBtn{ margin-left:auto; }
+  .wb-pages-strip{ display:flex; align-items:center; gap:6px; padding:10px 16px; border-bottom:1px solid var(--line); background:var(--paper); overflow-x:auto; }
+  .wb-page-tab{
+    display:flex; align-items:center; gap:6px; padding:6px 10px; border-radius:7px;
+    border:1px solid var(--line-strong); background:var(--parchment); font-size:12.5px; font-weight:600;
+    color:var(--ink-2); white-space:nowrap; flex-shrink:0;
+  }
+  .wb-page-tab.active{ background:var(--ink); color:var(--chalk); border-color:var(--ink); }
+  .wb-page-tab:hover{ border-color:var(--ochre); }
+  .wb-page-del{
+    display:inline-flex; align-items:center; justify-content:center; width:15px; height:15px;
+    border-radius:50%; font-size:11px; line-height:1; opacity:.7;
+  }
+  .wb-page-del:hover{ opacity:1; background:rgba(0,0,0,.15); }
+  .wb-page-add{
+    padding:6px 12px; border-radius:7px; border:1px dashed var(--line-strong); background:transparent;
+    font-size:12.5px; font-weight:600; color:#5b6b60; flex-shrink:0;
+  }
+  .wb-page-add:hover{ color:var(--ink); border-color:var(--ochre); }
+  .wb-toolbar{ display:flex; flex-wrap:wrap; align-items:center; gap:16px; padding:12px 16px; border-bottom:1px solid var(--line); background:var(--parchment); }
+  .wb-tool-group{ display:flex; align-items:center; gap:8px; }
+  .wb-color-swatch{ width:22px;height:22px;border-radius:50%; border:2px solid transparent; padding:0; box-shadow: inset 0 0 0 1px rgba(31,58,46,.15); }
+  .wb-color-swatch.sel{ border-color:var(--ink); }
+  .wb-tool-btn{ padding:7px 12px; border-radius:7px; border:1px solid var(--line-strong); background:var(--paper); font-size:12.5px; font-weight:600; color:var(--ink-2); }
+  .wb-tool-btn.active{ background:var(--ink); color:var(--chalk); border-color:var(--ink); }
+  .wb-tool-btn:disabled{ opacity:.4; cursor:default; }
+  .wb-size-label{ font-size:11.5px; color:#5b6b60; font-weight:600; }
+  .wb-toolbar input[type="range"]{ width:100px; accent-color:var(--ochre); }
+  .wb-toolbar .btn{ margin-left:auto; }
+  .wb-live-badge{ font-size:10.5px; font-weight:700; color:#2A6B3E; display:inline-flex; align-items:center; gap:5px; }
+  .wb-live-badge::before{ content:''; width:7px;height:7px;border-radius:50%; background:#2A6B3E; }
+  .wb-viewer-note{ display:flex; align-items:center; justify-content:space-between; padding:10px 16px; font-size:12.5px; color:#5b6b60; border-bottom:1px solid var(--line); background:var(--parchment); gap:10px; }
+  .wb-viewer-note-actions{ display:flex; align-items:center; gap:10px; flex-shrink:0; }
+  .wb-canvas-wrap{ padding:14px; background:#fff; }
+  .wb-canvas-wrap canvas{ width:100%; height:auto; display:block; border-radius:8px; border:1px solid var(--line); background:#fff; touch-action:none; cursor:crosshair; }
+  .wb-archive-note{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 16px; font-size:12px; color:#5b6b60; background:#FBEBD9; border-bottom:1px solid var(--line); }
+  .wb-archive-note button{ font-size:11.5px; font-weight:700; color:var(--ochre); background:none; border:1px solid var(--ochre); border-radius:20px; padding:4px 11px; }
+  .wb-archive-note button:hover{ background:rgba(198,142,23,.12); }
+  .wb-archive-note button:disabled{ opacity:.5; }
+
+  /* ---------- Calendar ---------- */
+  .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
+  .cal-dow{ font-size:11px; text-transform:uppercase; color:#7b8a80; text-align:center; font-weight:700; padding-bottom:4px; }
+  .cal-cell{
+    min-height:92px; background:var(--paper); border:1px solid var(--line); border-radius:8px; padding:7px;
+  }
+  .cal-cell.empty{ background:transparent; border-color:transparent; }
+  .cal-cell .cd-num{ font-family:'IBM Plex Mono',monospace; font-size:11.5px; color:#8b978e; }
+  .cal-cell.today .cd-num{ color:#fff; background:var(--ink); width:20px;height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+  .cal-ev{
+    margin-top:5px; font-size:10.5px; padding:2px 6px; border-radius:5px; font-weight:600;
+    background:var(--parchment); color:var(--ink-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    border-left:3px solid var(--ochre);
+  }
+
+  /* ---------- Modal ---------- */
+  .overlay{
+    position:fixed; inset:0; background:rgba(22,40,31,.45); display:none;
+    align-items:center; justify-content:center; z-index:50; padding:20px;
+  }
+  .overlay.show{ display:flex; }
+  .modal{
+    background:var(--paper); border-radius:14px; width:100%; max-width:460px;
+    box-shadow:0 20px 60px rgba(0,0,0,.25); overflow:hidden;
+  }
+  .modal-head{ padding:18px 22px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between;}
+  .modal-head h3{ margin:0; font-size:17px; color:var(--ink); }
+  .modal-close{ border:none; background:transparent; font-size:18px; color:#8b978e; }
+  .modal-body{ padding:20px 22px; display:flex; flex-direction:column; gap:13px; }
+  .field label{ display:block; font-size:12px; font-weight:700; color:#5b6b60; margin-bottom:5px; text-transform:uppercase; letter-spacing:.03em;}
+  .field input, .field select, .field textarea{
+    width:100%; border:1px solid var(--line-strong); border-radius:8px; padding:10px 11px;
+    font-size:13.5px; font-family:inherit; outline:none; background:var(--parchment);
+  }
+  .field input:focus, .field select:focus, .field textarea:focus{ border-color:var(--ochre); background:var(--paper); }
+  .field textarea{ resize:vertical; min-height:70px; }
+  .row-2{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .swatch-pick{ display:flex; gap:8px; }
+  .swatch-opt{ width:26px;height:26px;border-radius:50%; border:2px solid transparent; cursor:pointer; }
+  .swatch-opt.sel{ border-color:var(--ink); }
+  .modal-foot{ padding:16px 22px; border-top:1px solid var(--line); display:flex; justify-content:flex-end; gap:10px; }
+  .field-note{ font-size:12px; color:#7b8a80; }
+  .field-error{ font-size:12.5px; color:var(--red-pen); display:none; }
+
+  /* ---------- Image lightbox ---------- */
+  .img-lightbox{
+    position:fixed; inset:0; background:rgba(15,26,20,.86); display:none;
+    align-items:center; justify-content:center; z-index:60; padding:32px;
+  }
+  .img-lightbox.show{ display:flex; }
+  .img-lightbox img{
+    max-width:100%; max-height:100%; border-radius:10px; box-shadow:0 20px 60px rgba(0,0,0,.4);
+    display:block; background:#fff;
+  }
+  .img-lightbox-close, .img-lightbox-download{
+    position:absolute; top:18px; width:38px; height:38px; border-radius:50%;
+    background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.3); color:#fff;
+    font-size:19px; line-height:1; display:flex; align-items:center; justify-content:center;
+  }
+  .img-lightbox-close{ right:20px; }
+  .img-lightbox-download{ right:66px; font-size:16px; }
+  .img-lightbox-close:hover, .img-lightbox-download:hover{ background:rgba(255,255,255,.24); }
+  .img-lightbox-name{
+    position:absolute; bottom:20px; left:50%; transform:translateX(-50%);
+    color:rgba(255,255,255,.85); font-size:12.5px; background:rgba(0,0,0,.35);
+    padding:6px 14px; border-radius:20px; max-width:80%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+
+  .empty-state{ text-align:center; padding:50px 20px; color:#7b8a80; }
+  .empty-state .es-icon{ font-size:32px; margin-bottom:10px; }
+  .empty-state h4{ margin:0 0 6px; color:var(--ink); font-family:'Fraunces',serif; }
+
+  @media (max-width:980px){
+    .stat-grid{ grid-template-columns:repeat(2,1fr); }
+    .dash-grid{ grid-template-columns:1fr; }
+  }
+  @media (max-width:760px){
+    .sidebar{ position:fixed; left:-280px; z-index:40; transition:left .2s; }
+    .sidebar.open{ left:0; }
+    .stat-grid{ grid-template-columns:1fr 1fr; }
+    .content{ padding:20px 16px 50px; }
+    .row-2{ grid-template-columns:1fr; }
+  }
+
+  /* ---------- Login screen ---------- */
+  #loginScreen{
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background:
+      radial-gradient(circle at 15% 20%, rgba(198,142,23,.14), transparent 40%),
+      radial-gradient(circle at 85% 80%, rgba(31,58,46,.10), transparent 45%),
+      var(--parchment);
+    padding:24px;
+  }
+  .login-card{
+    background:var(--paper); border:1px solid var(--line); border-radius:16px;
+    box-shadow:0 20px 60px rgba(31,58,46,.12);
+    width:100%; max-width:400px; padding:40px 34px 34px; text-align:center;
+  }
+  .login-card .mark{
+    width:52px;height:52px;border-radius:12px; margin:0 auto 18px;
+    background:linear-gradient(155deg, var(--ochre-2), var(--ochre));
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Fraunces',serif; font-weight:700; color:var(--ink-2); font-size:26px;
+  }
+  .login-card h1{ font-size:24px; margin:0 0 6px; color:var(--ink); }
+  .login-card p{ font-size:13.5px; color:#5b6b60; margin:0 0 26px; line-height:1.5; }
+  .login-card .divider{ height:1px; background:var(--line); margin:24px 0 20px; }
+  .login-card .fineprint{ font-size:11.5px; color:#8b978e; margin-top:20px; line-height:1.5; }
+  #googleBtn{
+    display:flex; justify-content:center; align-items:center; gap:10px;
+    width:100%; min-height:46px; border-radius:10px;
+    background:var(--ink); color:var(--chalk); font-weight:600; font-size:14px; border:none;
+  }
+  #googleBtn:hover{ background:var(--ink-2); }
+  #googleBtn:disabled{ opacity:.6; cursor:default; }
+  .login-hidden{ display:none !important; }
+
+  /* ---------- Loading screen ---------- */
+  #loadingScreen{
+    position:fixed; inset:0; z-index:200;
+    display:flex; align-items:center; justify-content:center;
+    background:
+      radial-gradient(circle at 15% 20%, rgba(198,142,23,.14), transparent 40%),
+      radial-gradient(circle at 85% 80%, rgba(31,58,46,.10), transparent 45%),
+      var(--parchment);
+    transition:opacity .35s ease, visibility .35s ease;
+  }
+  #loadingScreen.loading-hidden{ opacity:0; visibility:hidden; pointer-events:none; }
+  .loading-card{ display:flex; flex-direction:column; align-items:center; gap:16px; }
+  .loading-mark{
+    width:56px;height:56px;border-radius:14px;
+    background:linear-gradient(155deg, var(--ochre-2), var(--ochre));
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Fraunces',serif; font-weight:700; color:var(--ink-2); font-size:28px;
+    box-shadow:0 10px 30px rgba(198,142,23,.28);
+    animation: pc-pulse 1.6s ease-in-out infinite;
+  }
+  .loading-name{ font-family:'Fraunces',serif; font-size:17px; font-weight:600; color:var(--ink); }
+  .loading-spinner{
+    width:26px; height:26px; border-radius:50%;
+    border:3px solid var(--line-strong); border-top-color:var(--ochre);
+    animation: pc-spin .8s linear infinite;
+  }
+  @keyframes pc-spin{ to{ transform:rotate(360deg); } }
+  @keyframes pc-pulse{ 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.06); } }
+
+  /* ---------- Install app button ---------- */
+  .install-btn{
+    display:inline-flex; align-items:center; gap:7px;
+    background:transparent; border:1px solid rgba(198,142,23,.55); color:var(--ochre);
+    border-radius:20px; padding:6px 13px 6px 11px; font-size:12px; font-weight:700;
+  }
+  .install-btn:hover{ background:rgba(198,142,23,.1); }
+  .install-btn .ic{ font-size:13px; }
+  #loginInstallBtn{ margin-top:14px; }
+  .install-hidden{ display:none !important; }
+
+  /* ---------- Skeleton loaders (subcollection fetches) ---------- */
+  .skel{ background:linear-gradient(90deg, var(--line) 25%, var(--parchment) 37%, var(--line) 63%); background-size:400% 100%; animation:skel-shimmer 1.4s ease infinite; border-radius:6px; }
+  @keyframes skel-shimmer{ 0%{background-position:100% 0;} 100%{background-position:0 0;} }
+</style>
+</head>
+<body>
+
+<div id="loadingScreen">
+  <div class="loading-card">
+    <div class="loading-mark">P</div>
+    <div class="loading-name">Pro Classroom</div>
+    <div class="loading-spinner"></div>
+  </div>
+</div>
+
+<div id="loginScreen" class="login-hidden">
+  <div class="login-card">
+    <div class="mark">P</div>
+    <h1>Welcome to Pro Classroom</h1>
+    <p>Sign in with your Google account to open your classroom dashboard.</p>
+    <button id="googleBtn" type="button">Sign in with Google</button>
+    <div id="loginError" style="display:none; color:var(--red-pen); font-size:12.5px; margin-top:14px;"></div>
+    <button id="loginInstallBtn" type="button" class="install-btn install-hidden"><span class="ic">&#8681;</span> Install app</button>
+    <div class="fineprint">Teachers can create classes and share a join code. Students use that code to join a class and see the teacher's stream, classwork, and their own grades. Data is stored securely in Firestore, scoped to your account.</div>
+  </div>
+</div>
+
+<div id="app" class="login-hidden"></div>
+
+<div class="overlay" id="overlay">
+  <div class="modal" id="modalBody"></div>
+</div>
+
+<div class="img-lightbox" id="imgLightbox">
+  <button type="button" class="img-lightbox-close" id="imgLightboxClose" title="Close">&times;</button>
+  <a class="img-lightbox-download" id="imgLightboxDownload" title="Download" download>&#8681;</a>
+  <img id="imgLightboxImg" src="" alt="" />
+  <div class="img-lightbox-name" id="imgLightboxName"></div>
+</div>
+
+<script type="module">
+/* =========================================================
+   PRO CLASSROOM — Dashboard
+   Firebase Auth (Google sign-in) + Firestore data store.
+
+   ---------------------------------------------------------
+   DATA MODEL — subcollections, not one monolithic document
+   ---------------------------------------------------------
+   classes/{classId}                              [metadata + counters only]
+     { name, section, room, color, ownerId, ownerName, ownerEmail,
+       joinCode, memberUids: [uid,...], studentCount, assignmentCount,
+       activeBoardId, createdAt }
+
+     /students/{studentId}                        { id, uid, name, email }
+     /assignments/{assignmentId}                  { id, title, due, points, desc, attachments, createdAt }
+     /stream/{postId}                             { id, author, authorUid, time, text, attachments, createdAt }
+     /grades/{studentId}                          { [assignmentId]: score, ... }   (one doc per student)
+     /submissions/{assignmentId}                  { [studentUid]: {studentName, files, note, submittedAt} }
+     /boards/{boardId}                            { id, code, name, activePageId, createdAt }
+       /pages/{pageId}                            { id, name, liveStroke, archivedChunks, createdAt }
+         /strokes/{strokeId}                      { color, width, tool, points, seq, createdAt }
+
+   Every class doc used to hold EVERYTHING (students, assignments, grades,
+   submissions, stream, and the entire whiteboard incl. every stroke) as
+   nested arrays/maps inside one <1MB Firestore document. That caused two
+   classes of problems this rewrite fixes:
+     1. A single doc could blow the 1MB cap once a class had enough
+        students/assignments/whiteboard history.
+     2. Firestore's updateDoc() cannot address individual elements of a
+        real array via a dotted field path (e.g. "assignments.2.title").
+        Every "small" edit — grading one cell, deleting one attachment,
+        adding one stroke — had to rebuild and rewrite the ENTIRE parent
+        array/doc client-side. That's what caused the whiteboard's silent
+        rollback bug: a failed dotted-path array write would roll the
+        local doc back and kick the user out of the view mid-stroke.
+
+   With subcollections, each logical item is its own document:
+   grading a student updates one small `grades/{studentId}` doc, adding a
+   whiteboard stroke is a single addDoc() to `strokes`, deleting an
+   assignment's attachment touches only that one assignment doc. No more
+   client-side array reconstruction anywhere in this file.
+
+   Listener strategy: the sidebar/dashboard only ever listens to class
+   METADATA (name, color, counters) via two collectionGroup-free queries
+   on `classes` — never full subcollection data for every class at once.
+   Full subcollection listeners (students/assignments/stream/grades/
+   submissions/boards) are only attached for the ONE class currently open,
+   and torn down when the user navigates away. Whiteboard strokes go a
+   step further: only the currently-open page's strokes are listened to,
+   not every page of every board. Dashboard-wide aggregates (upcoming
+   assignments, grade distribution, activity feed) are computed with a
+   one-time batched getDocs() pass across classes rather than N permanent
+   listeners, exactly so opening the app doesn't fan out into dozens of
+   simultaneous realtime subscriptions.
+========================================================= */
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+import {
+  getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut as fbSignOut
+} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+import {
+  getFirestore, collection, addDoc, setDoc, doc, updateDoc, deleteDoc, onSnapshot,
+  query, where, orderBy, limit, arrayUnion, deleteField, increment, serverTimestamp,
+  getDocs, getDoc, writeBatch
+} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+
+/* ---------------- Firebase config ---------------- */
+const firebaseConfig = {
+  apiKey: "AIzaSyDvMlnUNrWyDi0-cW9GKBrNnAxBjwgZi8w",
+  authDomain: "pro-chat-be1aa.firebaseapp.com",
+  projectId: "pro-chat-be1aa",
+  storageBucket: "pro-chat-be1aa.firebasestorage.app",
+  messagingSenderId: "675633102778",
+  appId: "1:675633102778:web:8f68a16e2c7384fd52a783"
+};
+
+/* ---------------- Drive sync backend (Google Apps Script) ----------------
+   Deploy Code.gs as a Web App ("Execute as: Me", "Who has access: Anyone"),
+   then paste the /exec URL here. Until this is set, attachment uploads and
+   whiteboard exports fall back gracefully with a clear error instead of
+   silently failing. See Code.gs for the backend implementation. */
+const DRIVE_SYNC_URL = "https://script.google.com/macros/s/AKfycbysaBBG8ztlW86tAxvecGr-s8L6xnv8i8Q1lJw6Na-WMOWPHskNYZXFwT_iIaXZAAmFIQ/exec";
+
+const fbApp = initializeApp(firebaseConfig);
+const auth = getAuth(fbApp);
+const dbFire = getFirestore(fbApp);
+const provider = new GoogleAuthProvider();
+
+/* ---------------- PWA: install prompt + service worker ---------------- */
+let deferredInstallPrompt = null;
+let pwaIsInstalled = false;
+
+function isRunningStandalone(){
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+function showInstallButtons(){
+  if(pwaIsInstalled || isRunningStandalone()) return;
+  document.querySelectorAll('.install-btn').forEach(btn=> btn.classList.remove('install-hidden'));
+}
+function hideInstallButtons(){
+  document.querySelectorAll('.install-btn').forEach(btn=> btn.classList.add('install-hidden'));
+}
+
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  showInstallButtons();
+});
+
+window.addEventListener('appinstalled', ()=>{
+  pwaIsInstalled = true;
+  deferredInstallPrompt = null;
+  hideInstallButtons();
+});
+
+async function triggerInstallPrompt(){
+  if(!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  try{ await deferredInstallPrompt.userChoice; }catch(e){ /* ignore */ }
+  deferredInstallPrompt = null;
+  hideInstallButtons();
+}
+
+document.getElementById('loginInstallBtn')?.addEventListener('click', triggerInstallPrompt);
+
+if(isRunningStandalone()) pwaIsInstalled = true;
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('./sw.js').catch(err=>{
+      console.warn('Service worker registration failed', err);
+    });
+  });
+}
+
+/* ---------------- Loading screen ---------------- */
+function hideLoadingScreen(){
+  const el = document.getElementById('loadingScreen');
+  if(el) el.classList.add('loading-hidden');
+}
+
+/* ---------------- App state ---------------- */
+const COLORS = ['#2C4A3B','#7A4B2E','#3C5A78','#7A3B4A','#4B4A78','#5C6B2C'];
+const WB_COLORS = ['#1F3A2E','#A6373B','#3C5A78','#C68E17','#4B4A78','#16281F'];
+const WB_PUSH_INTERVAL_MS = 150;
+const WB_MIN_POINT_DIST = 2.5;
+const STROKE_LISTEN_LIMIT = 800; // most-recent strokes kept "live" per page; older ones load on demand via Drive export/archive
+
+// Mirrors the LIMITS object in Code.gs. This client-side copy is only used
+// as an instant fallback (e.g. before the real plan has loaded, or for a
+// legacy class doc created before billing existed) — the source of truth
+// is always what getUserPlan() returns from the backend.
+const FREE_LIMITS = { maxClasses: 10, maxContentItemsPerClass: 20, maxWhiteboardsPerClass: 1, maxPagesPerWhiteboard: 2 };
+const PRO_LIMITS  = { maxClasses: null, maxContentItemsPerClass: null, maxWhiteboardsPerClass: null, maxPagesPerWhiteboard: null };
+
+function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,9); }
+
+function genJoinCode(){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for(let i=0;i<6;i++) s += chars[Math.floor(Math.random()*chars.length)];
+  return s;
+}
+function genBoardCode(){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for(let i=0;i<5;i++) s += chars[Math.floor(Math.random()*chars.length)];
+  return 'WB-' + s;
+}
+
+const state = {
+  view: 'dashboard',        // dashboard | calendar | class
+  activeClassId: null,
+  classTab: 'stream',       // stream | classwork | people | grades | whiteboard
+  todayISO: new Date().toISOString().slice(0,10),
+  user: null,
+  connStatus: 'idle',       // idle | connecting | live | error
+  wbView: 'dashboard',      // dashboard | board  (inside the Whiteboard tab)
+  wbOpenBoardId: null,
+  wbOpenPageId: null,
+  wbFollowLive: true,
+  wbColor: WB_COLORS[0],
+  wbTool: 'pen',
+  wbWidth: 4,
+  dashboardLoading: false,
+  userPlan: null,           // { plan:'free'|'pro', limits, pricing, hasPendingPayment, expiryDate } — set by fetchAndSyncPlan()
+};
+
+// Class metadata only — cheap, always-on listeners. Full class content
+// (students/assignments/stream/grades/submissions/boards) lives in
+// activeClassData below and is only populated for the open class.
+const db = { classes: [] }; // sorted array of metadata objects, for sidebar/dashboard cards
+let classesMeta = {};       // id -> metadata object
+let ownedMap = {}, memberMap = {};
+let unsubOwned = null, unsubMember = null;
+let ownedLoaded = false, memberLoaded = false;
+
+// Hydrated data for whichever class is currently open.
+let activeClassData = null; // { ...meta, students:[], assignments:[], stream:[], grades:{}, submissions:{}, whiteboard:{boards:[]} }
+let activeClassUnsubs = [];  // core subcollection listeners for the open class
+
+// Whiteboard listeners scoped to the currently open board/page only.
+let wbPagesUnsub = null;     // boards/{boardId}/pages listener (page tabs + liveStroke, no strokes)
+let wbStrokesUnsub = null;   // boards/{boardId}/pages/{pageId}/strokes listener (only the open page)
+
+// Dashboard-wide aggregates, computed via one-time batched fetches (not permanent listeners).
+let dashboardAgg = null; // { totalStudents, totalAssignments, dueSoon, overallAvg, upcoming:[], dist:{}, activity:[] }
+let dashboardAggFreshFor = null; // classIds fingerprint the aggregate was computed for
+
+/* ---- local (non-Firestore) whiteboard drawing session state ---- */
+let wbDrawing = false;
+let wbCurrentPoints = [];
+let wbCurrentId = null;
+let wbLastPushTime = 0;
+let wbNextSeq = 1; // per open page, seeded from the highest seq seen on load
+const wbRedoStacks = {}; // "boardId:pageId" -> array of stroke objects (client-local, teacher-only)
+
+/* ---- local (non-Firestore) "insert link" pending-attachment buffers ---- */
+const pendingLinks = { stream: [], newAssignment: [], submitWork: [] };
+
+/* ---------------- Firestore path helpers ---------------- */
+function classRef(classId){ return doc(dbFire,'classes',classId); }
+function studentsCol(classId){ return collection(dbFire,'classes',classId,'students'); }
+function assignmentsCol(classId){ return collection(dbFire,'classes',classId,'assignments'); }
+function streamCol(classId){ return collection(dbFire,'classes',classId,'stream'); }
+function gradesCol(classId){ return collection(dbFire,'classes',classId,'grades'); }
+function submissionsCol(classId){ return collection(dbFire,'classes',classId,'submissions'); }
+function boardsCol(classId){ return collection(dbFire,'classes',classId,'boards'); }
+function pagesCol(classId,boardId){ return collection(dbFire,'classes',classId,'boards',boardId,'pages'); }
+function strokesCol(classId,boardId,pageId){ return collection(dbFire,'classes',classId,'boards',boardId,'pages',pageId,'strokes'); }
+
+function emptyWhiteboard(){ return { boards: [] }; }
+
+function docToClassMeta(docSnap){
+  const d = docSnap.data();
+  return {
+    id: docSnap.id,
+    name: d.name, section: d.section, room: d.room, color: d.color,
+    ownerId: d.ownerId, ownerName: d.ownerName, ownerEmail: d.ownerEmail,
+    joinCode: d.joinCode,
+    memberUids: d.memberUids || [],
+    studentCount: d.studentCount || 0,
+    assignmentCount: d.assignmentCount || 0,
+    postCount: d.postCount || 0,
+    activeBoardId: d.activeBoardId || null,
+    ownerPlan: d.ownerPlan || 'free',
+    ownerLimits: d.ownerLimits || FREE_LIMITS,
+  };
+}
+
+/* ---------------- Class metadata listeners (always on, cheap) ---------------- */
+function mergeClassesMeta(){
+  const merged = { ...memberMap, ...ownedMap };
+  classesMeta = merged;
+  db.classes = Object.values(merged).sort((a,b)=> a.name.localeCompare(b.name));
+
+  if(ownedLoaded && memberLoaded && state.activeClassId && !merged[state.activeClassId]){
+    closeActiveClass();
+    state.view = 'dashboard'; state.activeClassId = null;
+  }
+  state.connStatus = 'live';
+
+  // A class-metadata change (e.g. someone else joined, or activeBoardId
+  // flipped) shouldn't tear down an in-progress stroke. If we're mid-draw,
+  // just skip this particular render; the canvas/chrome will catch up on
+  // the next stroke-level or page-level snapshot instead.
+  if(wbDrawing) return;
+  render();
+}
+
+function listenClassesMeta(){
+  const uidVal = state.user.uid;
+  if(unsubOwned) unsubOwned();
+  if(unsubMember) unsubMember();
+  ownedLoaded = false; memberLoaded = false;
+
+  const ownedQ = query(collection(dbFire,'classes'), where('ownerId','==',uidVal));
+  unsubOwned = onSnapshot(ownedQ, snap=>{
+    ownedMap = {};
+    snap.forEach(d=> ownedMap[d.id] = docToClassMeta(d));
+    ownedLoaded = true;
+    mergeClassesMeta();
+  }, err=>{ console.error('owned listener error', err); state.connStatus='error'; render(); });
+
+  const memberQ = query(collection(dbFire,'classes'), where('memberUids','array-contains',uidVal));
+  unsubMember = onSnapshot(memberQ, snap=>{
+    memberMap = {};
+    snap.forEach(d=> memberMap[d.id] = docToClassMeta(d));
+    memberLoaded = true;
+    mergeClassesMeta();
+  }, err=>{ console.error('member listener error', err); state.connStatus='error'; render(); });
+}
+
+/* ---------------- Opening / closing a class (full subcollection listeners) ---------------- */
+function closeActiveClass(){
+  activeClassUnsubs.forEach(fn=>{ try{ fn(); }catch(e){} });
+  activeClassUnsubs = [];
+  closeWhiteboardBoard();
+  activeClassData = null;
+}
+
+function openClass(classId){
+  if(state.activeClassId === classId && activeClassData) return; // already open
+  closeActiveClass();
+  state.activeClassId = classId;
+  const meta = classesMeta[classId] || { id: classId };
+  activeClassData = { ...meta, students:[], assignments:[], stream:[], grades:{}, submissions:{}, whiteboard: emptyWhiteboard() };
+
+  const patch = (fn)=>{
+    if(wbDrawing) { fn(); return; } // apply data, defer the render only
+    fn();
+    render();
+  };
+
+  activeClassUnsubs.push(onSnapshot(studentsCol(classId), snap=>{
+    const arr = []; snap.forEach(d=> arr.push({ id:d.id, ...d.data() }));
+    patch(()=> activeClassData.students = arr);
+  }, err=> console.error('students listener error', err)));
+
+  activeClassUnsubs.push(onSnapshot(assignmentsCol(classId), snap=>{
+    const arr = []; snap.forEach(d=> arr.push({ id:d.id, ...d.data() }));
+    arr.sort((a,b)=> (a.due||'').localeCompare(b.due||''));
+    patch(()=> activeClassData.assignments = arr);
+  }, err=> console.error('assignments listener error', err)));
+
+  activeClassUnsubs.push(onSnapshot(query(streamCol(classId), orderBy('createdAt','desc'), limit(60)), snap=>{
+    const arr = []; snap.forEach(d=> arr.push({ id:d.id, ...d.data() }));
+    patch(()=> activeClassData.stream = arr);
+  }, err=> console.error('stream listener error', err)));
+
+  activeClassUnsubs.push(onSnapshot(gradesCol(classId), snap=>{
+    const map = {}; snap.forEach(d=> map[d.id] = d.data());
+    patch(()=> activeClassData.grades = map);
+  }, err=> console.error('grades listener error', err)));
+
+  activeClassUnsubs.push(onSnapshot(submissionsCol(classId), snap=>{
+    const map = {}; snap.forEach(d=> map[d.id] = d.data());
+    patch(()=> activeClassData.submissions = map);
+  }, err=> console.error('submissions listener error', err)));
+
+  activeClassUnsubs.push(onSnapshot(query(boardsCol(classId), orderBy('createdAt','asc')), snap=>{
+    const arr = []; snap.forEach(d=> arr.push({ id:d.id, ...d.data(), pages: (activeClassData.whiteboard.boards.find(b=>b.id===d.id)||{}).pages || [] }));
+    patch(()=>{
+      activeClassData.whiteboard.boards = arr;
+      // If the board the whiteboard view currently has open just got deleted remotely, bounce to the list.
+      if(state.wbOpenBoardId && !arr.find(b=>b.id===state.wbOpenBoardId)){
+        closeWhiteboardBoard();
+        state.wbView = 'dashboard';
+      }
+    });
+  }, err=> console.error('boards listener error', err)));
+}
+
+/* Fetches a merged view of class metadata + hydrated content, for the
+   currently open class. Cards for classes that AREN'T open (e.g. dashboard
+   "upcoming" rows) only ever need metadata, handled separately. */
+function getClass(id){
+  if(id === state.activeClassId && activeClassData) return activeClassData;
+  return classesMeta[id] || null;
+}
+function isTeacher(c){ return !!(c && state.user && c.ownerId === state.user.uid); }
+
+// The plan that governs a class's limits is always the OWNER's (teacher's)
+// plan, not whoever happens to be performing the action. Teachers read
+// their own freshly-fetched plan; everyone else reads the denormalized
+// ownerPlan/ownerLimits fields on the class doc (kept in sync by
+// syncOwnerPlanToOwnedClasses whenever the teacher's plan is checked).
+function effectiveLimitsFor(c){
+  if(!c) return FREE_LIMITS;
+  if(isTeacher(c)) return (state.userPlan && state.userPlan.limits) || c.ownerLimits || FREE_LIMITS;
+  return c.ownerLimits || FREE_LIMITS;
+}
+// Denormalized counters (assignmentCount/postCount), not array lengths — the
+// stream listener only loads the most recent 60 posts, so counting the
+// loaded array would under-count once a class has grown past that.
+function contentItemCount(c){
+  if(!c) return 0;
+  return (c.assignmentCount || 0) + (c.postCount || 0);
+}
+
+/* ---------------- Whiteboard: board/page-scoped listeners ---------------- */
+function closeWhiteboardBoard(){
+  if(wbPagesUnsub){ wbPagesUnsub(); wbPagesUnsub = null; }
+  closeWhiteboardPageStrokes();
+  state.wbOpenBoardId = null;
+  state.wbOpenPageId = null;
+}
+function closeWhiteboardPageStrokes(){
+  if(wbStrokesUnsub){ wbStrokesUnsub(); wbStrokesUnsub = null; }
+}
+
+function openWhiteboardBoard(classId, boardId){
+  if(wbPagesUnsub) wbPagesUnsub();
+  state.wbOpenBoardId = boardId;
+  state.wbOpenPageId = null;
+
+  wbPagesUnsub = onSnapshot(query(pagesCol(classId, boardId), orderBy('createdAt','asc')), snap=>{
+    const pages = []; snap.forEach(d=> pages.push({ id:d.id, ...d.data(), strokes: (findOpenBoard()?.pages || []).find(p=>p.id===d.id)?.strokes || [] }));
+    const board = activeClassData?.whiteboard.boards.find(b=>b.id===boardId);
+    const apply = ()=>{
+      if(board) board.pages = pages;
+      // Decide which page should be "open" for stroke listening: the
+      // board's activePageId if present, else the first page.
+      const boardActivePageId = (activeClassData?.whiteboard.boards.find(b=>b.id===boardId)?.activePageId) || (pages[0] && pages[0].id) || null;
+      if(boardActivePageId && boardActivePageId !== state.wbOpenPageId){
+        openWhiteboardPageStrokes(classId, boardId, boardActivePageId);
+      }
+    };
+    if(wbDrawing){ apply(); } else { apply(); render(); }
+  }, err=> console.error('pages listener error', err));
+}
+
+function findOpenBoard(){
+  if(!activeClassData || !state.wbOpenBoardId) return null;
+  return activeClassData.whiteboard.boards.find(b=>b.id===state.wbOpenBoardId) || null;
+}
+function findOpenPage(){
+  const board = findOpenBoard();
+  if(!board) return null;
+  return board.pages.find(p=>p.id===state.wbOpenPageId) || board.pages[0] || null;
+}
+
+function openWhiteboardPageStrokes(classId, boardId, pageId){
+  closeWhiteboardPageStrokes();
+  state.wbOpenPageId = pageId;
+  wbStrokesUnsub = onSnapshot(
+    query(strokesCol(classId, boardId, pageId), orderBy('seq','asc'), limit(STROKE_LISTEN_LIMIT)),
+    snap=>{
+      const strokes = []; let maxSeq = 0;
+      snap.forEach(d=>{ const data = d.data(); strokes.push({ id:d.id, ...data }); if(data.seq > maxSeq) maxSeq = data.seq; });
+      wbNextSeq = maxSeq + 1;
+      const board = activeClassData?.whiteboard.boards.find(b=>b.id===boardId);
+      const page = board ? board.pages.find(p=>p.id===pageId) : null;
+      if(page) page.strokes = strokes;
+      // Whiteboard canvas: patch in place rather than a full re-render so an
+      // in-progress local stroke / pointer capture is never interrupted.
+      const canvasEl = document.getElementById('wbCanvas');
+      if(state.view==='class' && state.classTab==='whiteboard' && state.wbView==='board' && canvasEl){
+        redrawWhiteboard(activeClassData);
+        syncWhiteboardChrome(activeClassData);
+      }else if(!wbDrawing){
+        render();
+      }
+    },
+    err=> console.error('strokes listener error', err)
+  );
+}
+
+/* ---------------- Class CRUD ---------------- */
+async function createClassFn(name, section, room, color){
+  const ref = await addDoc(collection(dbFire,'classes'), {
+    name, section: section || 'Section 1', room: room || 'TBD', color,
+    ownerId: state.user.uid, ownerName: state.user.name, ownerEmail: state.user.email,
+    joinCode: genJoinCode(),
+    memberUids: [], studentCount: 0, assignmentCount: 0, postCount: 0, activeBoardId: null,
+    ownerPlan: state.userPlan?.plan || 'free',
+    ownerLimits: state.userPlan?.limits || FREE_LIMITS,
+    createdAt: serverTimestamp()
+  });
+  // Seed a first whiteboard board + page so the whiteboard tab has something to open.
+  const boardRef = await addDoc(boardsCol(ref.id), { code: genBoardCode(), name: 'Board 1', activePageId: null, createdAt: serverTimestamp() });
+  const pageRef = await addDoc(pagesCol(ref.id, boardRef.id), { name: 'Page 1', liveStroke: null, archivedChunks: [], createdAt: serverTimestamp() });
+  await updateDoc(doc(dbFire,'classes',ref.id,'boards',boardRef.id), { activePageId: pageRef.id });
+  await updateDoc(classRef(ref.id), { activeBoardId: boardRef.id });
+  return ref.id;
+}
+
+// Firestore doesn't cascade-delete subcollections. Since there's no Cloud
+// Functions backend here (GAS + Firestore only, per this project's stack),
+// deletion is done client-side: recursively collect every doc in every
+// subcollection (including nested boards -> pages -> strokes) and remove
+// them in batches of 450 (under Firestore's 500-writes-per-batch cap),
+// then delete the class doc itself last.
+async function deleteClassFn(classId){
+  const allRefs = [];
+  const collectFlat = async (colRef)=>{
+    const snap = await getDocs(colRef);
+    snap.forEach(d=> allRefs.push(d.ref));
+    return snap;
+  };
+  await collectFlat(studentsCol(classId));
+  await collectFlat(assignmentsCol(classId));
+  await collectFlat(streamCol(classId));
+  await collectFlat(gradesCol(classId));
+  await collectFlat(submissionsCol(classId));
+  const boardsSnap = await collectFlat(boardsCol(classId));
+  for(const boardDoc of boardsSnap.docs){
+    const pagesSnap = await collectFlat(pagesCol(classId, boardDoc.id));
+    for(const pageDoc of pagesSnap.docs){
+      await collectFlat(strokesCol(classId, boardDoc.id, pageDoc.id));
+    }
+  }
+  for(let i=0;i<allRefs.length;i+=450){
+    const batch = writeBatch(dbFire);
+    allRefs.slice(i,i+450).forEach(r=> batch.delete(r));
+    await batch.commit();
+  }
+  await deleteDoc(classRef(classId));
+}
+
+async function joinClassByCode(codeRaw){
+  const code = (codeRaw || '').trim().toUpperCase();
+  if(!code) return { ok:false, msg:'Enter a class code.' };
+  const q = query(collection(dbFire,'classes'), where('joinCode','==',code));
+  const snap = await getDocs(q);
+  if(snap.empty) return { ok:false, msg:'No class found with that code.' };
+  const docSnap = snap.docs[0];
+  const data = docSnap.data();
+  if(data.ownerId === state.user.uid) return { ok:false, msg:"You're the teacher of this class." };
+  if((data.memberUids||[]).includes(state.user.uid)) return { ok:true, classId:docSnap.id };
+  await updateDoc(classRef(docSnap.id), { memberUids: arrayUnion(state.user.uid), studentCount: increment(1) });
+  await setDoc(doc(dbFire,'classes',docSnap.id,'students',state.user.uid), {
+    uid: state.user.uid, name: state.user.name, email: state.user.email
+  });
+  return { ok:true, classId:docSnap.id };
+}
+
+/* ---------------- Attachment helpers (shared rendering) ---------------- */
+function isImageType(type){ return !!type && type.startsWith('image/'); }
+function isLinkAttachment(att){ return !!att && att.type === 'link'; }
+
+const FILE_ICONS = { pdf:'📕', doc:'📘', docx:'📘', ppt:'📙', pptx:'📙', xls:'📗', xlsx:'📗', zip:'🗂️', txt:'📄' };
+function fileIconFor(att){
+  const ext = (att.name || '').split('.').pop().toLowerCase();
+  return FILE_ICONS[ext] || '📎';
+}
+function fileMetaFor(att){
+  const ext = (att.name || '').split('.').pop();
+  if(ext && ext.length<=5 && ext.toLowerCase()!==att.name.toLowerCase()) return ext.toUpperCase();
+  return (att.type||'file').split('/').pop();
+}
+
+function renderAttachmentList(atts, delAttrs){
+  if(!atts || !atts.length) return '';
+  return `
+    <div class="wc-attachments">
+      ${atts.map((att,i)=>{
+        const delBtn = delAttrs ? `<button type="button" class="wc-attach-del" title="Remove" ${delAttrs(i)}>&times;</button>` : '';
+        if(isImageType(att.type)){
+          return `
+            <div class="wc-attach-item">
+              <button type="button" class="wc-attach-thumb" data-view-image data-img-url="${att.url}" data-img-name="${att.name}" title="${att.name}"><img src="${att.url}" alt="${att.name}" loading="lazy" /></button>
+              <span class="wc-attach-label">${att.name.length>16? att.name.slice(0,16)+'…':att.name}</span>
+              ${delBtn}
+            </div>`;
+        }
+        if(isLinkAttachment(att)){
+          return `
+            <div class="wc-attach-item">
+              <a href="${att.url}" target="_blank" rel="noopener" class="wc-attach-chip link-chip" title="${att.url}">
+                <span class="chip-ic">&#128279;</span>
+                <span class="chip-text">
+                  <span class="chip-name">${att.name.length>22? att.name.slice(0,22)+'…':att.name}</span>
+                  <span class="chip-meta">Link</span>
+                </span>
+              </a>
+              ${delBtn}
+            </div>`;
+        }
+        return `
+          <div class="wc-attach-item">
+            <a href="${att.url}" download="${att.name}" target="_blank" rel="noopener" class="wc-attach-chip" title="${att.name}">
+              <span class="chip-ic">${fileIconFor(att)}</span>
+              <span class="chip-text">
+                <span class="chip-name">${att.name.length>22? att.name.slice(0,22)+'…':att.name}</span>
+                <span class="chip-meta">${fileMetaFor(att)}</span>
+              </span>
+            </a>
+            ${delBtn}
+          </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+function showLinkInsertPopover(hostEl, onAdd){
+  if(!hostEl) return;
+  hostEl.innerHTML = `
+    <div class="link-insert-pop">
+      <input type="text" id="linkPopUrl" placeholder="Paste a link (https://...)" />
+      <input type="text" id="linkPopName" placeholder="Display name (optional)" />
+      <div class="link-insert-pop-foot">
+        <button type="button" class="btn btn-ghost" id="linkPopCancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="linkPopAdd">Add link</button>
+      </div>
+    </div>
+  `;
+  const urlInput = hostEl.querySelector('#linkPopUrl');
+  const nameInput = hostEl.querySelector('#linkPopName');
+  urlInput.focus();
+  const confirmAdd = ()=>{
+    let url = urlInput.value.trim();
+    if(!url) { urlInput.focus(); return; }
+    if(!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    const nameVal = nameInput.value.trim();
+    let display = nameVal;
+    if(!display){
+      try{ display = new URL(url).hostname.replace(/^www\./,''); }
+      catch(e){ display = url; }
+    }
+    onAdd({ name: display.slice(0,60), type:'link', url, size:0 });
+    hostEl.innerHTML = '';
+  };
+  hostEl.querySelector('#linkPopCancel').addEventListener('click', ()=>{ hostEl.innerHTML=''; });
+  hostEl.querySelector('#linkPopAdd').addEventListener('click', confirmAdd);
+  urlInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') confirmAdd(); });
+  nameInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') confirmAdd(); });
+}
+
+function renderPendingLinksInto(ctx){
+  const containerId = ctx==='stream' ? 'streamPendingLinks' : ctx==='newAssignment' ? 'assignmentPendingLinks' : 'submitPendingLinks';
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  el.innerHTML = renderAttachmentList(pendingLinks[ctx], (i)=>`data-remove-pending-link data-ctx="${ctx}" data-idx="${i}"`);
+}
+
+/* ---------------- Google Drive sync (via Apps Script Web App) ---------------- */
+function driveSyncConfigured(){
+  return !!DRIVE_SYNC_URL && !DRIVE_SYNC_URL.startsWith('PASTE_YOUR_');
+}
+
+async function driveApiCall(action, payload){
+  if(!driveSyncConfigured()){
+    throw new Error('Google Drive sync isn\'t configured yet — set DRIVE_SYNC_URL to your deployed Apps Script Web App URL.');
+  }
+  const idToken = await auth.currentUser.getIdToken();
+  const resp = await fetch(DRIVE_SYNC_URL, {
+    method: 'POST',
+    body: JSON.stringify({ action, idToken, ...payload })
+  });
+  if(!resp.ok) throw new Error('Drive sync request failed (HTTP ' + resp.status + ')');
+  const data = await resp.json();
+  if(!data.ok) throw new Error(data.error || 'Drive sync request failed');
+  return data;
+}
+
+/* ---------------- Billing: plan status (same backend as Drive sync) ----------------
+   Code.gs's handleRequest() now serves both file-sync actions and billing
+   actions ('getUserPlan', 'submitPayment') from the one deployed /exec URL,
+   so this reuses driveApiCall as-is — no separate BACKEND_URL needed here. */
+async function fetchAndSyncPlan(){
+  if(!driveSyncConfigured() || !state.user) return;
+  try{
+    const data = await driveApiCall('getUserPlan', {});
+    state.userPlan = {
+      plan: data.plan || 'free',
+      limits: data.limits || (data.plan==='pro' ? PRO_LIMITS : FREE_LIMITS),
+      pricing: data.pricing || null,
+      hasPendingPayment: !!data.hasPendingPayment,
+      expiryDate: data.expiryDate || null,
+    };
+    render();
+    syncOwnerPlanToOwnedClasses();
+  }catch(err){
+    console.warn('Could not load plan status (falling back to Free limits)', err);
+  }
+}
+
+// Writes the teacher's current plan/limits onto every class THEY own, so a
+// student's client — which can only ever check its own plan, never the
+// teacher's — can still enforce the correct limits via the denormalized
+// ownerPlan/ownerLimits fields on the class doc.
+async function syncOwnerPlanToOwnedClasses(){
+  if(!state.userPlan) return;
+  for(const c of Object.values(ownedMap)){
+    const samePlan = c.ownerPlan === state.userPlan.plan;
+    const sameLimits = JSON.stringify(c.ownerLimits) === JSON.stringify(state.userPlan.limits);
+    if(samePlan && sameLimits) continue;
+    try{ await updateDoc(classRef(c.id), { ownerPlan: state.userPlan.plan, ownerLimits: state.userPlan.limits }); }
+    catch(err){ console.warn('Could not sync plan onto class', c.id, err); }
+  }
+}
+
+// Small floating notice used when a free-plan limit blocks an action —
+// non-blocking, dismisses itself, links straight to the upgrade page.
+function showLimitToast(message){
+  let el = document.getElementById('limitToast');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'limitToast';
+    el.className = 'limit-toast';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `<span>${message}</span><a href="upgrade.html">Upgrade →</a>`;
+  el.classList.add('show');
+  clearTimeout(showLimitToast._t);
+  showLimitToast._t = setTimeout(()=> el.classList.remove('show'), 7000);
+}
+
+function readFileAsDataURL(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=> resolve(reader.result);
+    reader.onerror = ()=> reject(reader.error || new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImageElement(dataUrl){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    img.onload = ()=> resolve(img);
+    img.onerror = ()=> reject(new Error('Could not read this image.'));
+    img.src = dataUrl;
+  });
+}
+
+function dataUrlByteSize(dataUrl){
+  const commaIdx = dataUrl.indexOf(',');
+  const base64Part = commaIdx>=0 ? dataUrl.slice(commaIdx+1) : dataUrl;
+  return Math.ceil(base64Part.length * 3 / 4);
+}
+
+const IMAGE_MAX_DIMENSIONS = [2000, 1600, 1200, 900, 700];
+const IMAGE_TARGET_BYTES = 3 * 1024 * 1024;
+const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+
+async function compressImageToPng(file){
+  const rawDataUrl = await readFileAsDataURL(file);
+  const img = await loadImageElement(rawDataUrl);
+  const naturalMax = Math.max(img.naturalWidth, img.naturalHeight) || 1;
+
+  let lastDataUrl = null, lastSize = Infinity;
+  for(const maxDim of IMAGE_MAX_DIMENSIONS){
+    const scale = Math.min(1, maxDim / naturalMax);
+    const w = Math.max(1, Math.round(img.naturalWidth * scale));
+    const h = Math.max(1, Math.round(img.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+    const pngDataUrl = canvas.toDataURL('image/png');
+    const size = dataUrlByteSize(pngDataUrl);
+    lastDataUrl = pngDataUrl; lastSize = size;
+    if(size <= IMAGE_TARGET_BYTES) return { dataUrl: pngDataUrl, size };
+  }
+  return { dataUrl: lastDataUrl, size: lastSize };
+}
+
+function pngFileName(name){
+  const base = (name || 'image').replace(/\.[^./\\]+$/, '');
+  return (base || 'image') + '.png';
+}
+
+async function encodeAttachments(files, classId, category, subId){
+  const encoded = [];
+  for(const file of files){
+    let mimeType = file.type || 'application/octet-stream';
+    let uploadName = file.name;
+    let dataBase64;
+
+    if(isImageType(file.type)){
+      const { dataUrl, size } = await compressImageToPng(file);
+      if(size > MAX_ATTACHMENT_BYTES){
+        throw new Error(`"${file.name}" is still ${(size/1024/1024).toFixed(1)}MB after compression — try a smaller image.`);
+      }
+      mimeType = 'image/png';
+      uploadName = pngFileName(file.name);
+      dataBase64 = dataUrl.split(',')[1];
+    }else{
+      if(file.size > MAX_ATTACHMENT_BYTES){
+        throw new Error(`"${file.name}" is ${(file.size/1024/1024).toFixed(1)}MB — attachments must be under ${(MAX_ATTACHMENT_BYTES/1024/1024).toFixed(0)}MB.`);
+      }
+      const dataUrl = await readFileAsDataURL(file);
+      dataBase64 = dataUrl.split(',')[1];
+    }
+
+    const result = await driveApiCall('uploadFile', {
+      classId, category, subId,
+      fileName: uploadName, mimeType, dataBase64
+    });
+    encoded.push({ name: uploadName, type: mimeType, size: result.size || file.size, url: result.url, driveFileId: result.fileId });
+  }
+  return encoded;
+}
+
+async function deleteAttachmentFromDrive(driveFileId){
+  if(!driveFileId) return;
+  try{ await driveApiCall('deleteFile', { fileId: driveFileId }); }
+  catch(err){ console.warn('Drive file delete failed (continuing anyway)', err); }
+}
+
+/* ---------------- Assignments (each its own document now) ---------------- */
+async function addAssignmentFn(classId, a){
+  await setDoc(doc(dbFire,'classes',classId,'assignments',a.id), {
+    title:a.title, due:a.due, points:a.points, desc:a.desc || '', attachments: a.attachments || [],
+    createdAt: serverTimestamp()
+  });
+  await updateDoc(classRef(classId), { assignmentCount: increment(1) });
+}
+
+// A normal single-document field update — no more array reconstruction.
+async function updateAssignmentFn(classId, assignmentId, updates){
+  await updateDoc(doc(dbFire,'classes',classId,'assignments',assignmentId), updates);
+}
+
+async function deleteAssignmentFn(classId, assignmentId){
+  const c = getClass(classId);
+  const target = c && c.assignments ? c.assignments.find(a=>a.id===assignmentId) : null;
+
+  await deleteDoc(doc(dbFire,'classes',classId,'assignments',assignmentId));
+  await updateDoc(classRef(classId), { assignmentCount: increment(-1) });
+
+  // Strip this assignment's score from every student's grade doc.
+  const gradesSnap = await getDocs(gradesCol(classId));
+  const clears = [];
+  gradesSnap.forEach(d=>{
+    if(d.data() && Object.prototype.hasOwnProperty.call(d.data(), assignmentId)){
+      clears.push(updateDoc(d.ref, { [assignmentId]: deleteField() }));
+    }
+  });
+  await Promise.all(clears);
+
+  // Remove the submissions doc for this assignment (one doc, keyed by assignmentId).
+  const subRef = doc(dbFire,'classes',classId,'submissions',assignmentId);
+  const subSnap = await getDoc(subRef);
+  const subData = subSnap.exists() ? subSnap.data() : null;
+  await deleteDoc(subRef).catch(()=>{});
+
+  if(target) (target.attachments || []).forEach(att=> deleteAttachmentFromDrive(att.driveFileId));
+  if(subData){
+    Object.values(subData).forEach(sub=> (sub.files||[]).forEach(att=> deleteAttachmentFromDrive(att.driveFileId)));
+  }
+}
+
+async function removeAssignmentAttachmentFn(classId, assignmentId, attIndex){
+  const c = getClass(classId);
+  const target = c && c.assignments ? c.assignments.find(a=>a.id===assignmentId) : null;
+  const att = target && target.attachments && target.attachments[attIndex];
+  const newAttachments = (target ? target.attachments : []).filter((_,i)=> i!==attIndex);
+  await updateDoc(doc(dbFire,'classes',classId,'assignments',assignmentId), { attachments: newAttachments });
+  if(att) deleteAttachmentFromDrive(att.driveFileId);
+}
+
+/* ---------------- Submissions (one doc per assignment, keyed by student uid) ---------------- */
+async function submitAssignmentFn(classId, assignmentId, files, note, links){
+  const subId = assignmentId + '_' + state.user.uid;
+  const uploaded = files && files.length ? await encodeAttachments(files, classId, 'submissions', subId) : [];
+  const attachments = uploaded.concat(links || []);
+  await setDoc(doc(dbFire,'classes',classId,'submissions',assignmentId), {
+    [state.user.uid]: {
+      studentName: state.user.name,
+      files: attachments,
+      note: note || '',
+      submittedAt: new Date().toISOString()
+    }
+  }, { merge: true });
+}
+
+async function removeSubmissionAttachmentFn(classId, assignmentId, attIndex){
+  const c = getClass(classId);
+  const subsForA = c && c.submissions ? c.submissions[assignmentId] : null;
+  const mySub = subsForA ? subsForA[state.user.uid] : null;
+  if(!mySub) return;
+  const removedAtt = (mySub.files||[])[attIndex];
+  const files = (mySub.files||[]).filter((_,i)=> i!==attIndex);
+  await setDoc(doc(dbFire,'classes',classId,'submissions',assignmentId), {
+    [state.user.uid]: { ...mySub, files }
+  }, { merge: true });
+  if(removedAtt) deleteAttachmentFromDrive(removedAtt.driveFileId);
+}
+
+/* ---------------- Roster ---------------- */
+async function addStudentFn(classId, name){
+  const studentId = uid('s');
+  await setDoc(doc(dbFire,'classes',classId,'students',studentId), { name });
+  await updateDoc(classRef(classId), { studentCount: increment(1) });
+}
+
+/* ---------------- Stream ---------------- */
+async function postAnnouncementFn(classId, postId, text, attachments){
+  const time = new Date().toLocaleString('en', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+  await setDoc(doc(dbFire,'classes',classId,'stream',postId), {
+    author: state.user.name, authorUid: state.user.uid, time, text, attachments: attachments || [],
+    createdAt: serverTimestamp()
+  });
+  await updateDoc(classRef(classId), { postCount: increment(1) });
+}
+
+async function removeStreamAttachmentFn(classId, postId, attIndex){
+  const c = getClass(classId);
+  const post = c && c.stream ? c.stream.find(p=>p.id===postId) : null;
+  const att = post && post.attachments && post.attachments[attIndex];
+  const newAttachments = (post ? post.attachments : []).filter((_,i)=> i!==attIndex);
+  await updateDoc(doc(dbFire,'classes',classId,'stream',postId), { attachments: newAttachments });
+  if(att) deleteAttachmentFromDrive(att.driveFileId);
+}
+
+/* ---------------- Grades (one small doc per student) ---------------- */
+async function updateGradeFn(classId, studentId, assignmentId, val){
+  const ref = doc(dbFire,'classes',classId,'grades',studentId);
+  if(val === null){
+    await updateDoc(ref, { [assignmentId]: deleteField() }).catch(async ()=>{
+      // grade doc doesn't exist yet — nothing to delete, ignore.
+    });
+  }else{
+    await setDoc(ref, { [assignmentId]: val }, { merge: true });
+  }
+}
+
+/* ---------------- Whiteboard: boards & pages ----------------
+   Only the class owner (teacher) draws / manages boards & pages, matching
+   the security rules below. Students only ever read.
+
+   Boards, pages, and strokes are each real Firestore documents now, so
+   every mutation here is a plain create/update/delete on ONE small
+   document — the client-side "rebuild the whole array and rewrite it"
+   pattern this schema replaces is gone entirely, and with it the class of
+   silent-rollback bugs that pattern produced. */
+function redoKey(boardId, pageId){ return boardId + ':' + pageId; }
+
+async function createBoardFn(classId, name){
+  const boardRef = await addDoc(boardsCol(classId), { code: genBoardCode(), name: name || 'New board', activePageId: null, createdAt: serverTimestamp() });
+  const pageRef = await addDoc(pagesCol(classId, boardRef.id), { name: 'Page 1', liveStroke: null, archivedChunks: [], createdAt: serverTimestamp() });
+  await updateDoc(doc(dbFire,'classes',classId,'boards',boardRef.id), { activePageId: pageRef.id });
+  await updateDoc(classRef(classId), { activeBoardId: boardRef.id });
+  return boardRef.id;
+}
+
+async function openBoardLiveFn(classId, boardId){
+  await updateDoc(classRef(classId), { activeBoardId: boardId });
+}
+
+async function deleteBoardFn(classId, boardId){
+  const pagesSnap = await getDocs(pagesCol(classId, boardId));
+  for(const pageDoc of pagesSnap.docs){
+    const strokesSnap = await getDocs(strokesCol(classId, boardId, pageDoc.id));
+    const batch = writeBatch(dbFire);
+    strokesSnap.forEach(s=> batch.delete(s.ref));
+    batch.delete(pageDoc.ref);
+    await batch.commit();
+  }
+  await deleteDoc(doc(dbFire,'classes',classId,'boards',boardId));
+
+  const c = getClass(classId);
+  if(c && c.activeBoardId === boardId){
+    const remaining = (c.whiteboard ? c.whiteboard.boards : []).filter(b=>b.id!==boardId);
+    await updateDoc(classRef(classId), { activeBoardId: remaining[0] ? remaining[0].id : null });
+  }
+}
+
+async function switchWbPageFn(classId, boardId, pageId){
+  await updateDoc(doc(dbFire,'classes',classId,'boards',boardId), { activePageId: pageId });
+  openWhiteboardPageStrokes(classId, boardId, pageId);
+}
+
+async function addWbPageFn(classId, boardId){
+  const board = findOpenBoard();
+  const pageRef = await addDoc(pagesCol(classId, boardId), { name: 'Page ' + ((board?.pages.length||0)+1), liveStroke: null, archivedChunks: [], createdAt: serverTimestamp() });
+  await updateDoc(doc(dbFire,'classes',classId,'boards',boardId), { activePageId: pageRef.id });
+  openWhiteboardPageStrokes(classId, boardId, pageRef.id);
+}
+
+async function deleteWbPageFn(classId, boardId, pageId){
+  const board = findOpenBoard();
+  if(!board || board.pages.length <= 1) return; // keep at least one page
+  const strokesSnap = await getDocs(strokesCol(classId, boardId, pageId));
+  const batch = writeBatch(dbFire);
+  strokesSnap.forEach(s=> batch.delete(s.ref));
+  batch.delete(doc(dbFire,'classes',classId,'boards',boardId,'pages',pageId));
+  await batch.commit();
+  const remaining = board.pages.filter(p=>p.id!==pageId);
+  const newActive = remaining[0].id;
+  await updateDoc(doc(dbFire,'classes',classId,'boards',boardId), { activePageId: newActive });
+  if(state.wbOpenPageId === pageId) openWhiteboardPageStrokes(classId, boardId, newActive);
+  delete wbRedoStacks[redoKey(boardId, pageId)];
+}
+
+/* ---------------- Whiteboard: strokes (individual documents) ---------------- */
+async function pushLiveStroke(classId, boardId, pageId, strokeObj){
+  await updateDoc(doc(dbFire,'classes',classId,'boards',boardId,'pages',pageId), { liveStroke: strokeObj });
+}
+
+async function commitStroke(classId, boardId, pageId, strokeObj){
+  const seq = wbNextSeq++;
+  await addDoc(strokesCol(classId, boardId, pageId), {
+    points: strokeObj.points, color: strokeObj.color, width: strokeObj.width, tool: strokeObj.tool,
+    seq, createdAt: serverTimestamp()
+  });
+  await updateDoc(doc(dbFire,'classes',classId,'boards',boardId,'pages',pageId), { liveStroke: null });
+  wbRedoStacks[redoKey(boardId, pageId)] = []; // a fresh stroke invalidates redo history
+}
+
+async function undoStrokeFn(classId, boardId, pageId){
+  const page = findOpenPage();
+  if(!page || !page.strokes || !page.strokes.length) return;
+  const last = page.strokes[page.strokes.length - 1];
+  const key = redoKey(boardId, pageId);
+  if(!wbRedoStacks[key]) wbRedoStacks[key] = [];
+  wbRedoStacks[key].push(last);
+  await deleteDoc(doc(dbFire,'classes',classId,'boards',boardId,'pages',pageId,'strokes',last.id));
+}
+
+async function redoStrokeFn(classId, boardId, pageId){
+  const key = redoKey(boardId, pageId);
+  const redoStack = wbRedoStacks[key] || [];
+  if(!redoStack.length) return;
+  const stroke = redoStack.pop();
+  const seq = wbNextSeq++;
+  await addDoc(strokesCol(classId, boardId, pageId), {
+    points: stroke.points, color: stroke.color, width: stroke.width, tool: stroke.tool,
+    seq, createdAt: serverTimestamp()
+  });
+}
+
+async function clearAllFn(classId, boardId, pageId){
+  const strokesSnap = await getDocs(strokesCol(classId, boardId, pageId));
+  for(let i=0;i<strokesSnap.docs.length;i+=450){
+    const batch = writeBatch(dbFire);
+    strokesSnap.docs.slice(i,i+450).forEach(s=> batch.delete(s.ref));
+    await batch.commit();
+  }
+  await updateDoc(doc(dbFire,'classes',classId,'boards',boardId,'pages',pageId), { liveStroke: null, archivedChunks: [] });
+  wbRedoStacks[redoKey(boardId, pageId)] = [];
+}
+
+/* Manual, on-demand snapshot export of a board's current drawings to Drive
+   as a standalone JSON file (separate from the live Firestore data). */
+async function exportBoardToDrive(classId, board){
+  const exportPayload = {
+    boardId: board.id,
+    boardName: board.name,
+    boardCode: board.code,
+    exportedAt: new Date().toISOString(),
+    pages: board.pages.map(p=>({
+      id: p.id,
+      name: p.name,
+      strokes: p.strokes || [],
+    }))
+  };
+  const safeName = (board.name || 'board').replace(/[^a-z0-9\-_ ]/gi, '').trim().slice(0,60) || 'board';
+  const result = await driveApiCall('exportBoard', {
+    classId, boardId: board.id, boardName: safeName,
+    exportJson: JSON.stringify(exportPayload)
+  });
+  return result;
+}
+
+/* ---------------- Auth ---------------- */
+function friendlyAuthError(e){
+  const code = e?.code || 'unknown';
+  const map = {
+    'auth/unauthorized-domain': `This domain isn't authorized. In Firebase Console → Authentication → Settings → Authorized domains, add: ${location.hostname}`,
+    'auth/popup-blocked': 'Your browser blocked the sign-in popup. Allow popups for this site and try again.',
+    'auth/popup-closed-by-user': 'The sign-in popup was closed before completing.',
+    'auth/cancelled-popup-request': 'Sign-in was cancelled (another popup was already open).',
+    'auth/operation-not-allowed': 'Google sign-in isn\'t enabled for this Firebase project. In Firebase Console → Authentication → Sign-in method, enable Google.',
+    'auth/network-request-failed': 'Network error reaching Firebase — check your connection.',
+    'auth/internal-error': 'Firebase internal error — check that your API key / project config is correct.',
+  };
+  return `${map[code] || e?.message || 'Sign-in failed.'} (${code})`;
+}
+
+function handleGoogleSignIn(){
+  const btn = document.getElementById('googleBtn');
+  const err = document.getElementById('loginError');
+  if(err){ err.style.display='none'; }
+  if(btn){ btn.disabled = true; btn.textContent = 'Signing in…'; }
+  signInWithPopup(auth, provider).catch(e=>{
+    console.error('Sign-in failed', e);
+    if(err){ err.style.display='block'; err.textContent = friendlyAuthError(e); }
+  }).finally(()=>{
+    if(btn){ btn.disabled = false; btn.textContent = 'Sign in with Google'; }
+  });
+}
+
+onAuthStateChanged(auth, (user)=>{
+  hideLoadingScreen();
+  if(user){
+    state.user = { uid:user.uid, name: user.displayName || user.email, email: user.email, picture: user.photoURL || '' };
+    document.getElementById('loginScreen').classList.add('login-hidden');
+    document.getElementById('app').classList.remove('login-hidden');
+    state.connStatus = 'connecting';
+    render();
+    listenClassesMeta();
+    fetchAndSyncPlan();
+  }else{
+    if(unsubOwned) unsubOwned();
+    if(unsubMember) unsubMember();
+    closeActiveClass();
+    state.user = null; state.view='dashboard'; state.activeClassId=null; state.connStatus='idle';
+    state.userPlan = null;
+    db.classes = []; classesMeta = {}; ownedMap = {}; memberMap = {}; ownedLoaded = false; memberLoaded = false;
+    dashboardAgg = null; dashboardAggFreshFor = null;
+    document.getElementById('app').classList.add('login-hidden');
+    document.getElementById('loginScreen').classList.remove('login-hidden');
+    showInstallButtons();
+  }
+});
+
+function signOutUser(){ fbSignOut(auth); }
+
+document.getElementById('googleBtn').addEventListener('click', handleGoogleSignIn);
+
+/* ---------------- Helpers ---------------- */
+function fmtDate(iso){
+  const d = new Date(iso+'T00:00:00');
+  return { day:d.getDate(), mon:d.toLocaleString('en',{month:'short'}) };
+}
+function daysUntil(iso){
+  const today = new Date(state.todayISO+'T00:00:00');
+  const d = new Date(iso+'T00:00:00');
+  return Math.round((d-today)/86400000);
+}
+function statusPill(iso){
+  const diff = daysUntil(iso);
+  if(diff < 0) return {cls:'pill-late', text:'Late'};
+  if(diff <= 1) return {cls:'pill-warn', text: diff===0? 'Due today':'Due tomorrow'};
+  return {cls:'pill-ok', text: diff+' days left'};
+}
+function initials(name){
+  if(!name) return '?';
+  return name.split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase();
+}
+function firstName(name){
+  if(!name) return 'there';
+  return name.split(' ')[0];
+}
+
+/* ---------------- Dashboard-wide aggregates (one-time batched fetch) ----------------
+   The old version derived dashboard stats from db.classes, which used to
+   carry every class's full assignments/grades/stream in memory via
+   permanent listeners on every class at once. Now that a class's content
+   only loads when it's opened, dashboard totals are computed with a
+   one-time getDocs() pass per class instead — cheap, and doesn't hold N
+   more realtime subscriptions open just to show a summary number. */
+async function loadDashboardAggregates(){
+  const classes = db.classes;
+  const fingerprint = classes.map(c=>c.id).sort().join(',');
+  if(dashboardAgg && dashboardAggFreshFor === fingerprint) return dashboardAgg;
+
+  state.dashboardLoading = true;
+  const upcoming = [];
+  const dist = {'A (90-100)':0,'B (80-89)':0,'C (70-79)':0,'D (60-69)':0,'F (<60)':0};
+  const activity = [];
+  let totalAssignments = 0, dueSoon = 0;
+  const classAvgs = [];
+  const totalStudents = classes.reduce((n,c)=> n + (c.studentCount||0), 0);
+
+  for(const c of classes){
+    const [assignSnap, gradesSnap, streamSnap] = await Promise.all([
+      getDocs(assignmentsCol(c.id)),
+      getDocs(gradesCol(c.id)),
+      getDocs(query(streamCol(c.id), orderBy('createdAt','desc'), limit(3))).catch(()=>({forEach:()=>{}})),
+    ]);
+
+    const assignments = [];
+    assignSnap.forEach(d=> assignments.push({ id:d.id, ...d.data(), classId:c.id, className:c.name, color:c.color }));
+    totalAssignments += assignments.length;
+    assignments.forEach(a=>{
+      const diff = daysUntil(a.due);
+      if(diff >= -2) upcoming.push(a);
+      if(diff >= 0 && diff <= 3) dueSoon++;
+    });
+
+    let sumPct=0, countStudentsWithGrades=0;
+    gradesSnap.forEach(gDoc=>{
+      const g = gDoc.data();
+      let earned=0, poss=0;
+      assignments.forEach(a=>{ if(g[a.id]!=null){ earned += Number(g[a.id]); poss += a.points; } });
+      if(poss>0){
+        const pct = (earned/poss)*100;
+        sumPct += pct; countStudentsWithGrades++;
+        if(pct>=90) dist['A (90-100)']++;
+        else if(pct>=80) dist['B (80-89)']++;
+        else if(pct>=70) dist['C (70-79)']++;
+        else if(pct>=60) dist['D (60-69)']++;
+        else dist['F (<60)']++;
+      }
+    });
+    if(countStudentsWithGrades) classAvgs.push(sumPct/countStudentsWithGrades);
+
+    streamSnap.forEach(d=>{ const p = d.data(); activity.push({ ...p, className:c.name }); });
+  }
+
+  upcoming.sort((a,b)=> (a.due||'').localeCompare(b.due||''));
+  activity.sort((a,b)=>{
+    const ta = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+    const tb = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+    return tb - ta;
+  });
+
+  dashboardAgg = {
+    totalStudents, totalAssignments, dueSoon,
+    overallAvg: classAvgs.length ? Math.round(classAvgs.reduce((a,b)=>a+b,0)/classAvgs.length) : 0,
+    totalClasses: classes.length,
+    upcoming: upcoming.slice(0,6),
+    dist,
+    activity: activity.slice(0,6),
+  };
+  dashboardAggFreshFor = fingerprint;
+  state.dashboardLoading = false;
+  return dashboardAgg;
+}
+
+function connLabel(){
+  const map = {
+    idle:       { text:'', cls:'' },
+    connecting: { text:'Connecting…', cls:'sync-saving' },
+    live:       { text:'● Live', cls:'sync-saved' },
+    error:      { text:'Connection error', cls:'sync-error' },
+  };
+  return map[state.connStatus] || map.idle;
+}
+
+/* ---------------- Whiteboard rendering / drawing ---------------- */
+function currentStrokeObj(){
+  return {
+    id: wbCurrentId,
+    points: wbCurrentPoints,
+    color: state.wbTool==='eraser' ? '#ffffff' : state.wbColor,
+    width: state.wbTool==='eraser' ? Math.max(state.wbWidth*3, 14) : state.wbWidth,
+    tool: state.wbTool
+  };
+}
+
+function getCanvasPoint(canvas, evt){
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return {
+    x: Math.round((evt.clientX - rect.left) * scaleX),
+    y: Math.round((evt.clientY - rect.top) * scaleY)
+  };
+}
+
+function drawStroke(ctx, stroke){
+  if(!stroke || !stroke.points || stroke.points.length===0) return;
+  const pts = stroke.points;
+  ctx.strokeStyle = stroke.color;
+  ctx.lineWidth = stroke.width;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  if(pts.length===1){
+    ctx.lineTo(pts[0].x+0.1, pts[0].y+0.1);
+  }else{
+    for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+  }
+  ctx.stroke();
+}
+
+function redrawWhiteboard(c){
+  const canvas = document.getElementById('wbCanvas');
+  if(!canvas || !c) return;
+  const board = findOpenBoard();
+  const page = findOpenPage();
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  if(!page) return;
+  (page.strokes||[]).forEach(s=> drawStroke(ctx, s));
+  if(page.liveStroke && !(wbDrawing && page.liveStroke.id === wbCurrentId)){
+    drawStroke(ctx, page.liveStroke);
+  }
+  if(wbDrawing && wbCurrentPoints.length){
+    drawStroke(ctx, currentStrokeObj());
+  }
+}
+
+function syncWhiteboardChrome(c){
+  if(!c) return;
+  const board = findOpenBoard();
+  if(!board){ if(!wbDrawing) render(); return; }
+  const page = findOpenPage();
+  const teacher = isTeacher(c);
+
+  const stripEl = document.querySelector('.wb-pages-strip');
+  if(stripEl){
+    stripEl.innerHTML = board.pages.map(p=>`
+      <button class="wb-page-tab ${p.id===board.activePageId?'active':''}" ${teacher?`data-wb-page="${p.id}"`:''}>
+        <span>${p.name}</span>
+        ${teacher && board.pages.length>1 ? `<span class="wb-page-del" data-wb-del-page="${p.id}" title="Delete page">&times;</span>` : ''}
+      </button>
+    `).join('') + (teacher? `<button class="wb-page-add" id="wbAddPage">+ Page</button>` : '');
+    bindWhiteboardChromeEvents();
+  }
+  const undoBtn = document.getElementById('wbUndoBtn');
+  if(undoBtn) undoBtn.disabled = !(page && page.strokes && page.strokes.length);
+  const redoBtn = document.getElementById('wbRedoBtn');
+  if(redoBtn) redoBtn.disabled = !(page && wbRedoStacks[redoKey(board.id, page.id)] && wbRedoStacks[redoKey(board.id, page.id)].length);
+  const followBanner = document.getElementById('wbFollowBanner');
+  if(followBanner){
+    const isLive = c.activeBoardId === board.id;
+    followBanner.textContent = isLive
+      ? `Watching ${c.ownerName}'s live whiteboard \u00b7 ${board.name} \u00b7 ${page ? page.name : ''}`
+      : `Viewing ${board.name} (not the teacher's current live board)`;
+  }
+}
+
+function bindWhiteboardChromeEvents(){
+  document.querySelectorAll('[data-wb-page]').forEach(el=>{
+    el.addEventListener('click', async (e)=>{
+      if(e.target.closest('[data-wb-del-page]')) return;
+      const pid = el.dataset.wbPage;
+      try{ await switchWbPageFn(state.activeClassId, state.wbOpenBoardId, pid); }catch(err){ console.error('Switch page failed', err); }
+    });
+  });
+  document.querySelectorAll('[data-wb-del-page]').forEach(el=>{
+    el.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      if(!confirm('Delete this page? This cannot be undone.')) return;
+      try{ await deleteWbPageFn(state.activeClassId, state.wbOpenBoardId, el.dataset.wbDelPage); }catch(err){ console.error('Delete page failed', err); }
+    });
+  });
+  const addBtn = document.getElementById('wbAddPage');
+  if(addBtn){
+    addBtn.addEventListener('click', async ()=>{
+      const c = getClass(state.activeClassId);
+      const limits = effectiveLimitsFor(c);
+      const board = findOpenBoard();
+      const pageCount = board ? board.pages.length : 0;
+      if(limits.maxPagesPerWhiteboard != null && pageCount >= limits.maxPagesPerWhiteboard){
+        showLimitToast(`Free plan allows ${limits.maxPagesPerWhiteboard} pages per whiteboard.`);
+        return;
+      }
+      try{ await addWbPageFn(state.activeClassId, state.wbOpenBoardId); }catch(err){ console.error('Add page failed', err); }
+    });
+  }
+}
+
+function initWhiteboardCanvas(c){
+  const canvas = document.getElementById('wbCanvas');
+  if(!canvas || !c) return;
+  redrawWhiteboard(c);
+
+  const teacher = isTeacher(c);
+  if(!teacher) return;
+
+  canvas.addEventListener('pointerdown', (e)=>{
+    e.preventDefault();
+    const page = findOpenPage();
+    if(!page) return;
+    canvas.setPointerCapture(e.pointerId);
+    wbDrawing = true;
+    wbCurrentId = uid('stroke');
+    wbCurrentPoints = [getCanvasPoint(canvas, e)];
+    wbLastPushTime = 0;
+  });
+
+  canvas.addEventListener('pointermove', (e)=>{
+    if(!wbDrawing) return;
+    const pt = getCanvasPoint(canvas, e);
+    const last = wbCurrentPoints[wbCurrentPoints.length-1];
+    if(Math.hypot(pt.x-last.x, pt.y-last.y) < WB_MIN_POINT_DIST) return;
+    wbCurrentPoints.push(pt);
+    redrawWhiteboard(getClass(state.activeClassId));
+    const now = performance.now();
+    if(now - wbLastPushTime > WB_PUSH_INTERVAL_MS){
+      wbLastPushTime = now;
+      const board = findOpenBoard(); const page = findOpenPage();
+      if(page) pushLiveStroke(state.activeClassId, board.id, page.id, currentStrokeObj()).catch(err=>console.error('Whiteboard live push failed', err));
+    }
+  });
+
+  const endStroke = async ()=>{
+    if(!wbDrawing) return;
+    wbDrawing = false;
+    const strokeObj = currentStrokeObj();
+    wbCurrentPoints = [];
+    const board = findOpenBoard(); const page = findOpenPage();
+    if(!board || !page) return;
+    try{
+      if(strokeObj.points.length > 1){
+        await commitStroke(state.activeClassId, board.id, page.id, strokeObj);
+      }else{
+        await pushLiveStroke(state.activeClassId, board.id, page.id, null);
+      }
+    }catch(err){ console.error('Whiteboard commit failed', err); }
+    // A stroke may have queued up UI changes (class-meta / boards snapshots)
+    // that were deferred while wbDrawing was true — catch up now.
+    render();
+  };
+  canvas.addEventListener('pointerup', endStroke);
+  canvas.addEventListener('pointercancel', endStroke);
+  canvas.addEventListener('pointerleave', ()=>{ if(wbDrawing) endStroke(); });
+}
+
+/* ---------------- Rendering ---------------- */
+function render(){
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    ${renderSidebar()}
+    <div class="main">
+      ${renderTopbar()}
+      <div class="content">${renderView()}</div>
+    </div>
+  `;
+  bindGlobalEvents();
+  if(state.view==='class' && state.classTab==='whiteboard' && state.wbView==='board'){
+    initWhiteboardCanvas(getClass(state.activeClassId));
+  }
+}
+
+function renderSidebar(){
+  const activeId = state.activeClassId;
+  return `
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <div class="mark">P</div>
+      <div>
+        <div class="name">Pro Classroom</div>
+        <div class="tag">Dashboard</div>
+      </div>
+    </div>
+    <div class="nav-section">
+      <button class="nav-item ${state.view==='dashboard'?'active':''}" data-nav="dashboard">
+        <span class="ic">&#9670;</span> Dashboard
+      </button>
+      <button class="nav-item ${state.view==='calendar'?'active':''}" data-nav="calendar">
+        <span class="ic">&#128197;</span> Calendar
+      </button>
+      <div class="nav-label">Your classes</div>
+      ${db.classes.map(c=>`
+        <button class="class-tab ${state.view==='class'&&activeId===c.id?'active':''}" data-open-class="${c.id}">
+          <span class="swatch" style="background:${c.color}"></span>
+          <span class="ct-name">${c.name}</span>
+          <span class="ct-role">${isTeacher(c)?'Teacher':'Student'}</span>
+        </button>
+      `).join('')}
+      ${db.classes.length===0? `<div style="padding:8px 10px; font-size:12px; color:rgba(241,237,224,.45);">No classes yet</div>` : ''}
+    </div>
+    <div class="sidebar-foot">
+      <button class="new-class-btn" data-modal="newClass">+ Create class</button>
+      <button class="new-class-btn" data-modal="joinClass">Join with code</button>
+    </div>
+  </aside>`;
+}
+
+function renderTopbar(){
+  let title = 'Dashboard';
+  if(state.view==='calendar') title='Calendar';
+  if(state.view==='class'){ const c=getClass(state.activeClassId); title = c? c.name : 'Class'; }
+  return `
+  <div class="topbar">
+    <div class="search">
+      <span>&#128269;</span>
+      <input type="text" placeholder="Search classes, students, or assignments..." />
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-ghost" data-modal="newClass">+ Class</button>
+      <button class="btn btn-primary" data-modal="newAssignment">+ Assignment</button>
+      <button id="topbarInstallBtn" class="install-btn install-hidden" type="button"><span class="ic">&#8681;</span> Install</button>
+      <span id="syncIndicator" class="sync-indicator ${connLabel().cls}">${connLabel().text}</span>
+      ${state.user ? `<a href="upgrade.html" class="plan-badge ${state.userPlan?.plan==='pro'?'is-pro':''}">${state.userPlan?.plan==='pro' ? '⭐ Pro plan' : 'Free plan · Upgrade'}</a>` : ''}
+      ${renderUserMenu()}
+    </div>
+  </div>`;
+}
+
+function renderUserMenu(){
+  const u = state.user;
+  if(!u) return '';
+  const avatarInner = u.picture
+    ? `<img src="${u.picture}" alt="${u.name}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;" referrerpolicy="no-referrer" />`
+    : initials(u.name);
+  return `
+    <div style="display:flex; align-items:center; gap:10px;">
+      <div class="avatar" title="${u.name}" style="overflow:hidden; padding:0;">${avatarInner}</div>
+      <button class="btn btn-ghost" data-signout title="Sign out" style="padding:8px 12px;">Sign out</button>
+    </div>
+  `;
+}
+
+function renderView(){
+  if(state.view==='dashboard') return renderDashboard();
+  if(state.view==='calendar') return renderCalendar();
+  if(state.view==='class') return renderClass();
+  return '';
+}
+
+function renderDashboard(){
+  if(!dashboardAgg || dashboardAggFreshFor !== db.classes.map(c=>c.id).sort().join(',')){
+    loadDashboardAggregates().then(()=> render());
+  }
+  const s = dashboardAgg || { totalClasses: db.classes.length, totalStudents:0, totalAssignments:0, dueSoon:0, overallAvg:0, upcoming:[], dist:{'A (90-100)':0,'B (80-89)':0,'C (70-79)':0,'D (60-69)':0,'F (<60)':0}, activity:[] };
+  const loading = !dashboardAgg;
+  const maxBucket = Math.max(1,...Object.values(s.dist));
+
+  return `
+    <div class="page-head">
+      <div class="eyebrow">Good afternoon</div>
+      <h1>Welcome back, ${firstName(state.user?.name)}</h1>
+      <p>${db.classes.length? `Here's what's happening across your ${db.classes.length} class${db.classes.length===1?'':'es'} today.` : `You haven't joined or created any classes yet — get started below.`}</p>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card" style="--stat-color:#C68E17">
+        <div class="label">Active Classes</div>
+        <div class="value">${db.classes.length}</div>
+        <div class="sub">${loading? '…' : s.totalStudents} students total</div>
+      </div>
+      <div class="stat-card" style="--stat-color:#A6373B">
+        <div class="label">Due Within 3 Days</div>
+        <div class="value">${loading? '…' : s.dueSoon}</div>
+        <div class="sub">across all classes</div>
+      </div>
+      <div class="stat-card" style="--stat-color:#3C5A78">
+        <div class="label">Total Assignments</div>
+        <div class="value">${loading? '…' : s.totalAssignments}</div>
+        <div class="sub">this term</div>
+      </div>
+      <div class="stat-card" style="--stat-color:#2C4A3B">
+        <div class="label">Overall Average</div>
+        <div class="value">${loading ? '…' : (db.classes.length? s.overallAvg+'%' : '—')}</div>
+        <div class="sub">class average across sections</div>
+      </div>
+    </div>
+
+    ${db.classes.length===0 ? `
+      <div class="panel">
+        <div class="empty-state">
+          <div class="es-icon">&#127891;</div>
+          <h4>Create or join your first class</h4>
+          <p>Teachers create a class and share the join code. Students enter that code to join.</p>
+          <div style="margin-top:16px; display:flex; gap:10px; justify-content:center;">
+            <button class="btn btn-primary" data-modal="newClass">+ Create class</button>
+            <button class="btn btn-ghost" data-modal="joinClass">Join with code</button>
+          </div>
+        </div>
+      </div>
+    ` : `
+    <div class="dash-grid">
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Upcoming assignments</h3>
+          <button class="btn btn-ghost" data-nav="calendar" style="padding:6px 12px;font-size:12px;">View calendar</button>
+        </div>
+        <div class="panel-body">
+          ${loading ? `<div style="padding:16px 18px;"><div class="skel" style="height:14px;width:80%;margin-bottom:10px;"></div><div class="skel" style="height:14px;width:60%;"></div></div>` :
+          s.upcoming.length? s.upcoming.map(a=>{
+            const dt = fmtDate(a.due); const st = statusPill(a.due);
+            return `<div class="ledger-row" data-open-class="${a.classId}">
+              <div class="due-chip"><span class="d">${dt.day}</span><span class="m">${dt.mon}</span></div>
+              <div>
+                <div class="r-title">${a.title}</div>
+                <div class="r-sub">${a.className} &middot; ${a.points} pts</div>
+              </div>
+              <div class="r-right"><span class="pill ${st.cls}">${st.text}</span></div>
+            </div>`;
+          }).join('') : `<div class="empty-state"><div class="es-icon">&#10003;</div><h4>All caught up</h4><p>No upcoming assignments.</p></div>`}
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:20px;">
+        <div class="panel">
+          <div class="panel-head"><h3>Grade distribution</h3></div>
+          <div class="chart-wrap">
+            ${Object.entries(s.dist).map(([label,val])=>`
+              <div class="bar-row">
+                <div class="bar-label">${label.split(' ')[0]}</div>
+                <div class="bar-track"><div class="bar-fill" style="width:${(val/maxBucket*100)||0}%"></div></div>
+                <div class="bar-val">${val}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h3>Recent activity</h3></div>
+          <div class="panel-body">
+            ${loading ? `<div style="padding:16px 18px;"><div class="skel" style="height:14px;width:90%;"></div></div>` :
+            s.activity.length? s.activity.map(p=>`
+              <div class="activity-item">
+                <div class="activity-dot"></div>
+                <div>
+                  <div class="a-text"><b>${p.author}</b> posted in ${p.className}: ${p.text||''}</div>
+                  <div class="a-time">${p.time}</div>
+                </div>
+              </div>
+            `).join('') : `<div class="empty-state"><h4>No activity yet</h4></div>`}
+          </div>
+        </div>
+      </div>
+    </div>
+    `}
+  `;
+}
+
+function renderCalendar(){
+  if(!dashboardAgg || dashboardAggFreshFor !== db.classes.map(c=>c.id).sort().join(',')){
+    loadDashboardAggregates().then(()=> render());
+  }
+  const today = new Date(state.todayISO+'T00:00:00');
+  const year = today.getFullYear(), month = today.getMonth();
+  const first = new Date(year, month, 1);
+  const startDow = first.getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const monthName = first.toLocaleString('en',{month:'long', year:'numeric'});
+  const events = {};
+  (dashboardAgg ? dashboardAgg.upcoming : []).forEach(a=>{
+    const d = new Date(a.due+'T00:00:00');
+    if(d.getFullYear()===year && d.getMonth()===month){
+      const key = d.getDate();
+      events[key] = events[key]||[];
+      events[key].push(a);
+    }
+  });
+  let cells = '';
+  for(let i=0;i<startDow;i++) cells += `<div class="cal-cell empty"></div>`;
+  for(let day=1; day<=daysInMonth; day++){
+    const isToday = day===today.getDate();
+    const evs = events[day]||[];
+    cells += `<div class="cal-cell ${isToday?'today':''}">
+      <div class="cd-num">${day}</div>
+      ${evs.slice(0,3).map(e=>`<div class="cal-ev" style="border-left-color:${e.color}" title="${e.title}">${e.title}</div>`).join('')}
+    </div>`;
+  }
+  return `
+    <div class="page-head">
+      <div class="eyebrow">${monthName}</div>
+      <h1>Calendar</h1>
+      <p>Assignment due dates within the next window across your classes.</p>
+    </div>
+    <div class="cal-grid">
+      ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div class="cal-dow">${d}</div>`).join('')}
+      ${cells}
+    </div>
+  `;
+}
+
+function renderClass(){
+  const c = getClass(state.activeClassId);
+  if(!c) return `<div class="empty-state"><h4>Class not found</h4></div>`;
+  const hydrated = c === activeClassData;
+  if(!hydrated) return `<div class="empty-state"><div class="skel" style="height:120px;border-radius:14px;"></div></div>`;
+  const teacher = isTeacher(c);
+  const tabs = ['stream','classwork','people','grades','whiteboard'];
+  return `
+    <div class="class-banner" style="--banner-color-1:${c.color};--banner-color-2:${c.color}dd">
+      <div class="cb-sub">${c.section}</div>
+      <h1>${c.name}</h1>
+      <div class="cb-meta">${c.room} &middot; ${c.students.length} students &middot; ${c.assignments.length} assignments${!teacher? ' &middot; Taught by '+c.ownerName : ''}</div>
+      ${teacher? `
+        <div class="cb-code">
+          Class code: <b>${c.joinCode}</b>
+          <button class="cb-code-btn" data-copy-code="${c.joinCode}">Copy</button>
+        </div>
+        <button class="cb-delete-btn" data-delete-class="${c.id}" title="Delete this class">&#128465; Delete class</button>
+      ` : ''}
+    </div>
+    <div class="tab-strip">
+      ${tabs.map(t=>`<button class="tab-btn ${state.classTab===t?'active':''}" data-classtab="${t}">${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}
+    </div>
+    ${state.classTab==='stream' ? renderStream(c) : ''}
+    ${state.classTab==='classwork' ? renderClasswork(c) : ''}
+    ${state.classTab==='people' ? renderPeople(c) : ''}
+    ${state.classTab==='grades' ? renderGrades(c) : ''}
+    ${state.classTab==='whiteboard' ? renderWhiteboard(c) : ''}
+  `;
+}
+
+function renderStream(c){
+  return `
+    <div class="stream-compose">
+      <div class="avatar">${initials(state.user?.name)}</div>
+      <div class="stream-compose-main">
+        <input type="text" id="streamInput" placeholder="Share an announcement with ${c.name}..." />
+        <div class="stream-compose-foot">
+          <label class="stream-attach-btn" title="Attach images or files">
+            &#128206; Attach
+            <input type="file" id="streamAttachInput" multiple accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip" hidden />
+          </label>
+          <button type="button" class="stream-attach-btn" data-insert-link-btn data-ctx="stream" data-host="streamLinkPopoverHost" title="Insert a link">&#128279; Insert link</button>
+          <span id="streamAttachSummary" class="field-note"></span>
+        </div>
+        <div id="streamLinkPopoverHost"></div>
+        <div id="streamPendingLinks" class="wc-attachments"></div>
+      </div>
+      <button class="btn btn-primary" data-post-announcement="${c.id}" style="align-self:flex-start;">Post</button>
+    </div>
+    ${c.stream.length? c.stream.map(p=>{
+      const atts = p.attachments || [];
+      const canDelete = isTeacher(c);
+      return `
+      <div class="stream-item">
+        <div class="si-head">
+          <div class="mini-avatar">${initials(p.author)}</div>
+          <div>
+            <div class="si-name">${p.author}</div>
+            <div class="si-time">${p.time}</div>
+          </div>
+        </div>
+        ${p.text? `<div class="si-body">${p.text}</div>` : ''}
+        ${renderAttachmentList(atts, canDelete ? (i)=>`data-del-stream-att data-class="${c.id}" data-post="${p.id}" data-idx="${i}"` : null)}
+      </div>
+    `;}).join('') : `<div class="empty-state"><div class="es-icon">&#128172;</div><h4>No announcements yet</h4><p>Post something to get the conversation started.</p></div>`}
+  `;
+}
+
+function renderClasswork(c){
+  const teacher = isTeacher(c);
+  return `
+    <div style="display:flex; justify-content:flex-end; margin-bottom:14px;">
+      ${teacher? `<button class="btn btn-primary" data-modal="newAssignment" data-preset-class="${c.id}">+ Create assignment</button>` : ''}
+    </div>
+    <div class="card-grid">
+      ${c.assignments.length? c.assignments.map(a=>{
+        const st = statusPill(a.due); const dt = fmtDate(a.due);
+        const atts = a.attachments || [];
+        const subsForA = (c.submissions && c.submissions[a.id]) || {};
+        const mySub = !teacher ? (subsForA[state.user.uid] || null) : null;
+        const subCount = Object.keys(subsForA).length;
+        return `<div class="work-card">
+          <div class="wc-icon">&#128221;</div>
+          <h4>${a.title}</h4>
+          <div class="wc-meta">${a.points} points &middot; Due ${dt.mon} ${dt.day}</div>
+          ${a.desc? `<div class="wc-desc">${a.desc}</div>` : ''}
+          ${renderAttachmentList(atts, teacher ? (i)=>`data-del-assignment-att data-class="${c.id}" data-assignment="${a.id}" data-idx="${i}"` : null)}
+          <div class="wc-foot">
+            <span class="pill ${st.cls}">${st.text}</span>
+            ${mySub ? `<span class="pill pill-ok">Submitted</span>` : ''}
+          </div>
+          ${!teacher ? `
+            <button class="btn btn-ghost" data-modal="submitWork" data-preset-class="${c.id}" data-preset-assignment="${a.id}" style="width:100%; justify-content:center; margin-top:10px;">
+              ${mySub? 'View / resubmit' : 'Submit work'}
+            </button>
+          ` : `
+            <div style="display:flex; gap:8px; margin-top:10px;">
+              <button class="btn btn-ghost" data-modal="editAssignment" data-preset-class="${c.id}" data-preset-assignment="${a.id}" style="flex:1; justify-content:center;">
+                &#9998; Edit
+              </button>
+              <button class="btn btn-ghost" data-delete-assignment="${a.id}" data-class="${c.id}" title="Delete assignment" style="color:var(--red-pen); border-color:var(--line-strong); padding:9px 12px;">
+                &#128465;
+              </button>
+            </div>
+            <details class="wc-submissions">
+              <summary>${subCount}/${c.students.length} submitted</summary>
+              <div class="wc-sub-list">
+                ${subCount? Object.entries(subsForA).map(([sid,sub])=>{
+                  const student = c.students.find(s=>s.id===sid);
+                  return `<div class="wc-sub-item">
+                    <div class="wc-sub-name">${student? student.name : sub.studentName}</div>
+                    ${renderAttachmentList(sub.files, null)}
+                    ${sub.note? `<div class="wc-sub-note">"${sub.note}"</div>` : ''}
+                  </div>`;
+                }).join('') : `<div class="field-note">No submissions yet.</div>`}
+              </div>
+            </details>
+          `}
+        </div>`;
+      }).join('') : `<div class="empty-state"><h4>No classwork posted</h4></div>`}
+    </div>
+  `;
+}
+
+function renderPeople(c){
+  const teacher = isTeacher(c);
+  return `
+    <div style="display:flex; justify-content:flex-end; margin-bottom:14px;">
+      ${teacher? `<button class="btn btn-ghost" data-modal="newStudent" data-preset-class="${c.id}">+ Add student</button>` : ''}
+    </div>
+    <table class="roster">
+      <thead><tr><th>Name</th><th>Email</th>${teacher? '<th>Average</th>' : ''}</tr></thead>
+      <tbody>
+      ${c.students.map(st=>{
+        const g = c.grades[st.id]||{};
+        let earned=0, poss=0;
+        c.assignments.forEach(a=>{ if(g[a.id]!=null){ earned+=Number(g[a.id]); poss+=a.points; } });
+        const avg = poss? Math.round(earned/poss*100) : null;
+        return `<tr>
+          <td><div class="stud-name"><div class="mini-avatar">${initials(st.name)}</div>${st.name}</div></td>
+          <td class="mono" style="color:#7b8a80;">${st.email || (st.name.toLowerCase().replace(/[^a-z]/g,'.')+'@school.edu')}</td>
+          ${teacher? `<td class="avg-cell">${avg!=null? avg+'%' : '—'}</td>` : ''}
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderGrades(c){
+  const teacher = isTeacher(c);
+  if(!teacher){
+    const st = c.students.find(s=>s.id===state.user.uid);
+    const g = st ? (c.grades[st.id]||{}) : {};
+    let earned=0, poss=0;
+    c.assignments.forEach(a=>{ if(g[a.id]!=null){ earned+=Number(g[a.id]); poss+=a.points; } });
+    const avg = poss? Math.round(earned/poss*100) : null;
+    return `
+      <div class="gradebook-wrap">
+        <table class="gradebook">
+          <thead><tr><th>Assignment</th><th>Total marks</th><th>Your score</th></tr></thead>
+          <tbody>
+          ${c.assignments.length? c.assignments.map(a=>{
+            const val = g[a.id];
+            return `<tr>
+              <td>${a.title}</td>
+              <td>${a.points}</td>
+              <td class="avg-cell">${val!=null? val+' / '+a.points : '—'}</td>
+            </tr>`;
+          }).join('') : `<tr><td colspan="3" style="text-align:center;color:#7b8a80;">No assignments yet</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:14px; font-size:13.5px; color:var(--ink-2);">
+        Overall average: <b class="avg-cell">${avg!=null? avg+'%' : '—'}</b>
+      </div>
+    `;
+  }
+  return `
+    <div class="gradebook-wrap">
+      <table class="gradebook">
+        <thead>
+          <tr>
+            <th>Student</th>
+            ${c.assignments.map(a=>`<th>${a.title.length>16? a.title.slice(0,16)+'…':a.title}<br><span style="font-weight:400;">/${a.points}</span></th>`).join('')}
+            <th>Average</th>
+          </tr>
+        </thead>
+        <tbody>
+        ${c.students.map(st=>{
+          const g = c.grades[st.id]||{};
+          let earned=0, poss=0;
+          c.assignments.forEach(a=>{ if(g[a.id]!=null){ earned+=Number(g[a.id]); poss+=a.points; } });
+          const avg = poss? Math.round(earned/poss*100) : null;
+          return `<tr>
+            <td><div class="stud-name"><div class="mini-avatar">${initials(st.name)}</div>${st.name}</div></td>
+            ${c.assignments.map(a=>`<td><input class="grade-input" type="number" min="0" max="${a.points}"
+              value="${g[a.id]!=null? g[a.id] : ''}"
+              data-grade-cell data-class="${c.id}" data-student="${st.id}" data-assignment="${a.id}" /></td>`).join('')}
+            <td class="avg-cell">${avg!=null? avg+'%' : '—'}</td>
+          </tr>`;
+        }).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderWhiteboard(c){
+  if(state.wbView==='board' && state.wbOpenBoardId && findOpenBoard()){
+    return renderWhiteboardBoard(c);
+  }
+  return renderWhiteboardDashboard(c);
+}
+
+function renderWhiteboardDashboard(c){
+  const teacher = isTeacher(c);
+  const boards = c.whiteboard.boards;
+  return `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:10px;">
+      <div class="field-note">${boards.length} board${boards.length===1?'':'s'} in this class &middot; each has a unique board ID</div>
+      ${teacher? `<button class="btn btn-primary" id="wbNewBoardBtn">+ New board</button>` : ''}
+    </div>
+    <div class="card-grid">
+      ${boards.length? boards.map(b=>{
+        const isLive = c.activeBoardId===b.id;
+        return `<div class="wb-board-card ${isLive?'live':''}">
+          ${isLive? `<span class="wb-live-tag">&#9679; Live</span>` : ''}
+          <div class="wc-icon">&#128200;</div>
+          <h4>${b.name}</h4>
+          <div class="wc-meta mono">${b.code}</div>
+          <div class="wc-meta">${b.pages.length} page${b.pages.length===1?'':'s'}</div>
+          <div class="wb-board-foot">
+            <button class="btn btn-ghost" data-wb-open-board="${b.id}" style="flex:1; justify-content:center;">${teacher? 'Open & present' : 'View'}</button>
+            <button class="wb-board-del" data-wb-export-board="${b.id}" title="Export to Google Drive as JSON" style="color:var(--ink-2);">&#8681;</button>
+            ${teacher? `<button class="wb-board-del" data-wb-del-board="${b.id}" title="Delete board">&times;</button>` : ''}
+          </div>
+        </div>`;
+      }).join('') : `<div class="empty-state"><div class="es-icon">&#128200;</div><h4>No whiteboards yet</h4><p>${teacher? 'Create a board to start drawing live for your class.' : "Your teacher hasn't created a whiteboard yet."}</p></div>`}
+    </div>
+  `;
+}
+
+function renderWhiteboardBoard(c){
+  const teacher = isTeacher(c);
+  const board = findOpenBoard();
+  if(!board) return renderWhiteboardDashboard(c);
+  const page = findOpenPage();
+  if(!page) return `<div class="empty-state"><div class="skel" style="height:200px;border-radius:14px;"></div></div>`;
+  const isLive = c.activeBoardId === board.id;
+  const key = redoKey(board.id, page.id);
+  return `
+    <div class="wb-panel">
+      <div class="wb-board-head">
+        <button class="btn btn-ghost" id="wbBackBtn">&larr; Dashboard</button>
+        <div class="wb-board-title">
+          <b>${board.name}</b>
+          <span class="mono wb-board-code">${board.code}</span>
+          ${isLive? `<span class="wb-live-tag static">&#9679; Live</span>` : ''}
+        </div>
+        ${!teacher && !isLive ? `<button class="btn btn-ghost" id="wbJumpLiveBtn">Jump to live</button>` : ''}
+      </div>
+      <div class="wb-pages-strip">
+        ${board.pages.map(p=>`
+          <button class="wb-page-tab ${p.id===board.activePageId?'active':''}" ${teacher?`data-wb-page="${p.id}"`:''}>
+            <span>${p.name}</span>
+            ${teacher && board.pages.length>1 ? `<span class="wb-page-del" data-wb-del-page="${p.id}" title="Delete page">&times;</span>` : ''}
+          </button>
+        `).join('')}
+        ${teacher? `<button class="wb-page-add" id="wbAddPage">+ Page</button>` : ''}
+      </div>
+      ${teacher ? `
+      <div class="wb-toolbar">
+        <div class="wb-tool-group">
+          ${WB_COLORS.map(col=>`<button class="wb-color-swatch ${col===state.wbColor && state.wbTool==='pen'?'sel':''}" style="background:${col}" data-wb-color="${col}" title="Pen color"></button>`).join('')}
+        </div>
+        <div class="wb-tool-group">
+          <button class="wb-tool-btn ${state.wbTool==='pen'?'active':''}" data-wb-tool="pen">&#9998; Pen</button>
+          <button class="wb-tool-btn ${state.wbTool==='eraser'?'active':''}" data-wb-tool="eraser">&#9003; Eraser</button>
+        </div>
+        <div class="wb-tool-group">
+          <span class="wb-size-label">Thickness</span>
+          <input type="range" id="wbSize" min="2" max="24" value="${state.wbWidth}" />
+        </div>
+        <div class="wb-tool-group">
+          <button class="wb-tool-btn" id="wbUndoBtn" ${(page.strokes&&page.strokes.length)?'':'disabled'} title="Undo">&#8630; Undo</button>
+          <button class="wb-tool-btn" id="wbRedoBtn" ${(wbRedoStacks[key]&&wbRedoStacks[key].length)?'':'disabled'} title="Redo">&#8631; Redo</button>
+        </div>
+        <button class="btn btn-ghost" id="wbExportBtn" data-wb-export-board="${board.id}" title="Save this board's drawings to Google Drive as a JSON file">&#8681; Export to Drive</button>
+        <button class="btn btn-ghost" id="wbClearBtn">Clear all</button>
+      </div>
+      ` : `
+      <div class="wb-viewer-note">
+        <span id="wbFollowBanner">${isLive? `Watching ${c.ownerName}'s live whiteboard \u00b7 ${board.name} \u00b7 ${page.name}` : `Viewing ${board.name} (not the teacher's current live board)`}</span>
+        <div class="wb-viewer-note-actions">
+          <button class="btn btn-ghost" id="wbExportBtn" data-wb-export-board="${board.id}" title="Save this board's drawings to Google Drive as a JSON file" style="padding:6px 11px; font-size:12px;">&#8681; Export</button>
+          <span class="wb-live-badge">Live</span>
+        </div>
+      </div>
+      `}
+      <div class="wb-canvas-wrap">
+        <canvas id="wbCanvas" width="1200" height="640"></canvas>
+      </div>
+    </div>
+  `;
+}
+
+/* ---------------- Modals ---------------- */
+function openModal(type, preset, presetAssignment){
+  const overlay = document.getElementById('overlay');
+  const body = document.getElementById('modalBody');
+  const teacherClasses = db.classes.filter(isTeacher);
+
+  if(type==='newClass'){
+    body.innerHTML = `
+      <div class="modal-head"><h3>Create a class</h3><button class="modal-close" data-close>&times;</button></div>
+      <div class="modal-body">
+        <div class="field"><label>Class name</label><input id="mClassName" type="text" placeholder="e.g. World Literature" /></div>
+        <div class="row-2">
+          <div class="field"><label>Section</label><input id="mSection" type="text" placeholder="Period 4" /></div>
+          <div class="field"><label>Room</label><input id="mRoom" type="text" placeholder="Rm 201" /></div>
+        </div>
+        <div class="field"><label>Color</label>
+          <div class="swatch-pick">
+            ${COLORS.map((col,i)=>`<div class="swatch-opt ${i===0?'sel':''}" style="background:${col}" data-swatch="${col}"></div>`).join('')}
+          </div>
+        </div>
+        <div id="newClassLimitError" class="field-error"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-close>Cancel</button>
+        <button class="btn btn-primary" data-save="newClass">Create class</button>
+      </div>
+    `;
+  }
+
+  if(type==='joinClass'){
+    body.innerHTML = `
+      <div class="modal-head"><h3>Join a class</h3><button class="modal-close" data-close>&times;</button></div>
+      <div class="modal-body">
+        <div class="field">
+          <label>Class code</label>
+          <input id="mJoinCode" type="text" placeholder="e.g. 7F3K9Q" style="text-transform:uppercase; letter-spacing:.1em;" />
+        </div>
+        <div class="field-note">Ask your teacher for the 6-character class code shown on their class page.</div>
+        <div id="joinError" class="field-error"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-close>Cancel</button>
+        <button class="btn btn-primary" data-save="joinClass">Join</button>
+      </div>
+    `;
+  }
+
+  if(type==='submitWork'){
+    pendingLinks.submitWork = [];
+    const c = getClass(preset);
+    const a = c && c.assignments ? c.assignments.find(x=>x.id===presetAssignment) : null;
+    const mySub = (c && a && c.submissions && c.submissions[a.id]) ? c.submissions[a.id][state.user.uid] : null;
+    if(!c || !a){
+      body.innerHTML = `<div class="modal-head"><h3>Submit work</h3><button class="modal-close" data-close>&times;</button></div><div class="modal-body"><div class="field-note">Assignment not found.</div></div><div class="modal-foot"><button class="btn btn-ghost" data-close>Close</button></div>`;
+    }else{
+      body.innerHTML = `
+        <div class="modal-head"><h3>Submit: ${a.title}</h3><button class="modal-close" data-close>&times;</button></div>
+        <div class="modal-body">
+          ${mySub ? `
+            <div class="field-note">You submitted ${mySub.files.length} file(s) on ${new Date(mySub.submittedAt).toLocaleString()}. Uploading again will replace this submission.</div>
+            ${renderAttachmentList(mySub.files, (i)=>`data-del-submission-att data-class="${c.id}" data-assignment="${a.id}" data-idx="${i}"`)}
+          ` : ''}
+          <div class="field">
+            <label>Upload your answer (PDF, image, or Word doc)</label>
+            <input id="mSubmitFiles" type="file" multiple accept="application/pdf,.pdf,image/*,.doc,.docx" />
+            <div class="field-note" style="margin-top:6px;">Files are uploaded to Google Drive. Images are automatically converted to PNG.</div>
+            <button type="button" class="stream-attach-btn" data-insert-link-btn data-ctx="submitWork" data-host="submitLinkPopoverHost" style="margin-top:8px;">&#128279; Insert link</button>
+            <div id="submitLinkPopoverHost"></div>
+            <div id="submitPendingLinks" class="wc-attachments"></div>
+          </div>
+          <div class="field"><label>Note to teacher (optional)</label><textarea id="mSubmitNote" placeholder="Anything you'd like your teacher to know...">${mySub && mySub.note ? mySub.note : ''}</textarea></div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-ghost" data-close>Cancel</button>
+          <button class="btn btn-primary" data-save="submitWork" data-class="${c.id}" data-assignment="${a.id}">${mySub? 'Resubmit' : 'Submit'}</button>
+        </div>
+      `;
+    }
+  }
+
+  if(type==='newAssignment'){
+    pendingLinks.newAssignment = [];
+    body.innerHTML = `
+      <div class="modal-head"><h3>Create assignment</h3><button class="modal-close" data-close>&times;</button></div>
+      <div class="modal-body">
+        ${teacherClasses.length===0 ? `
+          <div class="field-note">You need to create a class (and be its teacher) before adding assignments.</div>
+        ` : `
+        <div class="field"><label>Title</label><input id="mTitle" type="text" placeholder="e.g. Essay Draft" /></div>
+        <div class="field"><label>Class</label>
+          <select id="mClass">${teacherClasses.map(c=>`<option value="${c.id}" ${preset===c.id?'selected':''}>${c.name}</option>`).join('')}</select>
+        </div>
+        <div class="row-2">
+          <div class="field"><label>Due date</label><input id="mDue" type="date" value="${state.todayISO}" /></div>
+          <div class="field"><label>Total marks</label><input id="mPoints" type="number" value="100" min="0" /></div>
+        </div>
+        <div class="field"><label>Instructions</label><textarea id="mDesc" placeholder="Assignment details for students..."></textarea></div>
+        <div class="field">
+          <label>Attach files or images (optional)</label>
+          <input id="mAttachments" type="file" multiple accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip" />
+          <div class="field-note" style="margin-top:6px;">Files are uploaded to Google Drive. Images are automatically converted to PNG.</div>
+          <button type="button" class="stream-attach-btn" data-insert-link-btn data-ctx="newAssignment" data-host="assignmentLinkPopoverHost" style="margin-top:8px;">&#128279; Insert link</button>
+          <div id="assignmentLinkPopoverHost"></div>
+          <div id="assignmentPendingLinks" class="wc-attachments"></div>
+        </div>
+        `}
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-close>Cancel</button>
+        ${teacherClasses.length>0 ? `<button class="btn btn-primary" data-save="newAssignment">Assign</button>` : ''}
+      </div>
+    `;
+  }
+
+  if(type==='editAssignment'){
+    const c = getClass(preset);
+    const a = c && c.assignments ? c.assignments.find(x=>x.id===presetAssignment) : null;
+    if(!c || !a){
+      body.innerHTML = `<div class="modal-head"><h3>Edit assignment</h3><button class="modal-close" data-close>&times;</button></div><div class="modal-body"><div class="field-note">Assignment not found.</div></div><div class="modal-foot"><button class="btn btn-ghost" data-close>Close</button></div>`;
+    }else{
+      const gradesForA = Object.values(c.grades || {}).map(g=> g[a.id]).filter(v=> v!=null);
+      const maxScored = gradesForA.length ? Math.max(...gradesForA.map(Number)) : null;
+      body.innerHTML = `
+        <div class="modal-head"><h3>Edit: ${a.title}</h3><button class="modal-close" data-close>&times;</button></div>
+        <div class="modal-body">
+          <div class="field"><label>Title</label><input id="mEditTitle" type="text" value="${a.title}" /></div>
+          <div class="row-2">
+            <div class="field"><label>Due date</label><input id="mEditDue" type="date" value="${a.due}" /></div>
+            <div class="field"><label>Total marks</label><input id="mEditPoints" type="number" value="${a.points}" min="0" /></div>
+          </div>
+          <div class="field"><label>Instructions</label><textarea id="mEditDesc">${a.desc||''}</textarea></div>
+          <div id="editPointsWarning" class="field-note" style="${maxScored!=null? '' : 'display:none;'}">
+            ${maxScored!=null? `Highest score already recorded for this assignment: ${maxScored}. Lowering total marks below this won't change that student's saved score.` : ''}
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-ghost" data-close>Cancel</button>
+          <button class="btn btn-primary" data-save="editAssignment" data-class="${c.id}" data-assignment="${a.id}">Save changes</button>
+        </div>
+      `;
+    }
+  }
+
+  if(type==='newStudent'){
+    body.innerHTML = `
+      <div class="modal-head"><h3>Add student</h3><button class="modal-close" data-close>&times;</button></div>
+      <div class="modal-body">
+        ${teacherClasses.length===0 ? `
+          <div class="field-note">You need to create a class (and be its teacher) before adding students.</div>
+        ` : `
+        <div class="field"><label>Full name</label><input id="mStudentName" type="text" placeholder="e.g. Jordan Lee" /></div>
+        <div class="field"><label>Class</label>
+          <select id="mStudentClass">${teacherClasses.map(c=>`<option value="${c.id}" ${preset===c.id?'selected':''}>${c.name}</option>`).join('')}</select>
+        </div>
+        <div class="field-note">This adds a roster-only entry. To let a student see grades themselves, share the class join code with them instead.</div>
+        `}
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" data-close>Cancel</button>
+        ${teacherClasses.length>0 ? `<button class="btn btn-primary" data-save="newStudent">Add student</button>` : ''}
+      </div>
+    `;
+  }
+
+  overlay.classList.add('show');
+  overlay.dataset.selectedColor = COLORS[0];
+}
+function closeModal(){ document.getElementById('overlay').classList.remove('show'); }
+
+/* ---------------- Image lightbox ---------------- */
+function openImageLightbox(url, name){
+  const lb = document.getElementById('imgLightbox');
+  const img = document.getElementById('imgLightboxImg');
+  const nameEl = document.getElementById('imgLightboxName');
+  const dlBtn = document.getElementById('imgLightboxDownload');
+  if(!lb || !img) return;
+  img.src = url;
+  img.alt = name || '';
+  if(nameEl) nameEl.textContent = name || '';
+  if(dlBtn){ dlBtn.href = url; dlBtn.setAttribute('download', name || 'image.png'); }
+  lb.classList.add('show');
+}
+function closeImageLightbox(){
+  const lb = document.getElementById('imgLightbox');
+  if(!lb) return;
+  lb.classList.remove('show');
+  const img = document.getElementById('imgLightboxImg');
+  if(img) img.src = '';
+}
+document.getElementById('imgLightboxClose')?.addEventListener('click', closeImageLightbox);
+document.getElementById('imgLightbox')?.addEventListener('click', (e)=>{
+  if(e.target.id === 'imgLightbox') closeImageLightbox();
+});
+document.addEventListener('keydown', (e)=>{
+  if(e.key === 'Escape') closeImageLightbox();
+});
+
+/* ---------------- Events ---------------- */
+function bindGlobalEvents(){
+  document.querySelectorAll('[data-nav]').forEach(el=>{
+    el.addEventListener('click', ()=>{ closeActiveClass(); state.activeClassId=null; state.view = el.dataset.nav; render(); });
+  });
+  document.querySelectorAll('[data-open-class]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const cid = el.dataset.openClass;
+      state.view='class'; state.classTab='stream';
+      openClass(cid);
+      render();
+    });
+  });
+  document.querySelectorAll('[data-classtab]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const tab = el.dataset.classtab;
+      state.classTab = tab;
+      if(tab === 'whiteboard'){
+        const c = getClass(state.activeClassId);
+        const teacher = isTeacher(c);
+        if(!teacher) state.wbFollowLive = true;
+        if(c && c.activeBoardId){
+          state.wbView = 'board';
+          openWhiteboardBoard(state.activeClassId, c.activeBoardId);
+        } else {
+          state.wbView = 'dashboard';
+          closeWhiteboardBoard();
+        }
+      }else{
+        closeWhiteboardBoard();
+      }
+      render();
+    });
+  });
+  document.querySelectorAll('[data-modal]').forEach(el=>{
+    el.addEventListener('click', ()=> openModal(el.dataset.modal, el.dataset.presetClass, el.dataset.presetAssignment));
+  });
+  document.querySelectorAll('[data-signout]').forEach(el=>{
+    el.addEventListener('click', signOutUser);
+  });
+  const topbarInstallBtn = document.getElementById('topbarInstallBtn');
+  if(topbarInstallBtn){
+    topbarInstallBtn.addEventListener('click', triggerInstallPrompt);
+    if(deferredInstallPrompt && !pwaIsInstalled && !isRunningStandalone()) topbarInstallBtn.classList.remove('install-hidden');
+  }
+  document.querySelectorAll('[data-copy-code]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      const code = el.dataset.copyCode;
+      try{
+        await navigator.clipboard.writeText(code);
+        const original = el.textContent;
+        el.textContent = 'Copied!';
+        setTimeout(()=>{ el.textContent = original; }, 1200);
+      }catch(e){ console.error('Copy failed', e); }
+    });
+  });
+  document.querySelectorAll('[data-delete-class]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      const cid = el.dataset.deleteClass;
+      const c = getClass(cid);
+      const name = c ? c.name : 'this class';
+      if(!confirm(`Delete "${name}" permanently? This removes all its assignments, grades, stream posts, submissions, and whiteboards. This cannot be undone.`)) return;
+      const original = el.textContent;
+      el.disabled = true;
+      el.textContent = 'Deleting…';
+      try{
+        await deleteClassFn(cid);
+        closeActiveClass();
+        state.view = 'dashboard'; state.activeClassId = null;
+        render();
+      }catch(e){
+        console.error('Delete class failed', e);
+        el.disabled = false;
+        el.textContent = original;
+        alert('Could not delete the class. Please try again.');
+      }
+    });
+  });
+  document.querySelectorAll('[data-delete-assignment]').forEach(el=>{
+    el.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const aid = el.dataset.deleteAssignment;
+      const cid = el.dataset.class;
+      const c = getClass(cid);
+      const a = c && c.assignments ? c.assignments.find(x=>x.id===aid) : null;
+      const title = a ? a.title : 'this assignment';
+      if(!confirm(`Delete "${title}"? This removes its attachments, all student submissions, and any recorded grades for it. This cannot be undone.`)) return;
+      const original = el.innerHTML;
+      el.disabled = true;
+      el.innerHTML = '…';
+      try{
+        await deleteAssignmentFn(cid, aid);
+      }catch(err){
+        console.error('Delete assignment failed', err);
+        el.disabled = false;
+        el.innerHTML = original;
+        alert('Could not delete the assignment. Please try again.');
+      }
+    });
+  });
+  const streamAttachInput = document.getElementById('streamAttachInput');
+  if(streamAttachInput){
+    streamAttachInput.addEventListener('change', ()=>{
+      const summary = document.getElementById('streamAttachSummary');
+      const n = streamAttachInput.files.length;
+      if(summary) summary.textContent = n ? `${n} file${n>1?'s':''} attached` : '';
+    });
+  }
+  document.querySelectorAll('[data-post-announcement]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      const cid = el.dataset.postAnnouncement;
+      const input = document.getElementById('streamInput');
+      const attachInput = document.getElementById('streamAttachInput');
+      const text = input.value.trim();
+      const files = (attachInput && attachInput.files) ? Array.from(attachInput.files) : [];
+      const links = pendingLinks.stream || [];
+      if(!text && !files.length && !links.length) return;
+
+      const targetClass = getClass(cid) || classesMeta[cid];
+      const limits = effectiveLimitsFor(targetClass);
+      if(limits.maxContentItemsPerClass != null && contentItemCount(targetClass) >= limits.maxContentItemsPerClass){
+        showLimitToast(`This class has reached the free plan's ${limits.maxContentItemsPerClass}-item limit (posts + assignments combined).`);
+        return;
+      }
+
+      const originalLabel = el.textContent;
+      el.disabled = true;
+      try{
+        const postId = uid('p');
+        let attachments = [];
+        if(files.length){
+          el.textContent = 'Uploading files…';
+          attachments = await encodeAttachments(files, cid, 'stream', postId);
+        }
+        attachments = attachments.concat(links);
+        el.textContent = 'Posting…';
+        await postAnnouncementFn(cid, postId, text, attachments);
+        input.value = '';
+        if(attachInput) attachInput.value = '';
+        pendingLinks.stream = [];
+        renderPendingLinksInto('stream');
+        const summary = document.getElementById('streamAttachSummary');
+        if(summary) summary.textContent = '';
+      }catch(e){
+        console.error('Post announcement failed', e);
+        const summary = document.getElementById('streamAttachSummary');
+        if(summary){ summary.style.color = 'var(--red-pen)'; summary.textContent = e.message || 'Could not post.'; }
+      }finally{
+        el.disabled = false;
+        el.textContent = originalLabel;
+      }
+    });
+  });
+  document.querySelectorAll('[data-grade-cell]').forEach(el=>{
+    el.addEventListener('change', async ()=>{
+      const cid = el.dataset.class, sid = el.dataset.student, aid = el.dataset.assignment;
+      const val = el.value === '' ? null : Number(el.value);
+      try{ await updateGradeFn(cid, sid, aid, val); }catch(e){ console.error(e); }
+    });
+  });
+
+  // ---- Whiteboard: dashboard controls ----
+  const wbNewBoardBtn = document.getElementById('wbNewBoardBtn');
+  if(wbNewBoardBtn){
+    wbNewBoardBtn.addEventListener('click', async ()=>{
+      const c = getClass(state.activeClassId);
+      const limits = effectiveLimitsFor(c);
+      const boardCount = (c && c.whiteboard ? c.whiteboard.boards.length : 0);
+      if(limits.maxWhiteboardsPerClass != null && boardCount >= limits.maxWhiteboardsPerClass){
+        showLimitToast(`Free plan allows ${limits.maxWhiteboardsPerClass} whiteboard${limits.maxWhiteboardsPerClass===1?'':'s'} per class.`);
+        return;
+      }
+      wbNewBoardBtn.disabled = true;
+      try{
+        const boardId = await createBoardFn(state.activeClassId, null);
+        state.wbView = 'board';
+        openWhiteboardBoard(state.activeClassId, boardId);
+        render();
+      }catch(err){ console.error('Create board failed', err); wbNewBoardBtn.disabled = false; }
+    });
+  }
+  document.querySelectorAll('[data-wb-open-board]').forEach(el=>{
+    el.addEventListener('click', async ()=>{
+      const bid = el.dataset.wbOpenBoard;
+      const c = getClass(state.activeClassId);
+      state.wbView = 'board';
+      if(!isTeacher(c)) state.wbFollowLive = false;
+      openWhiteboardBoard(state.activeClassId, bid);
+      render();
+      if(isTeacher(c)){
+        try{ await openBoardLiveFn(state.activeClassId, bid); }catch(err){ console.error('Open board failed', err); }
+      }
+    });
+  });
+  document.querySelectorAll('[data-wb-del-board]').forEach(el=>{
+    el.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const bid = el.dataset.wbDelBoard;
+      if(!confirm('Delete this board and all its pages? This cannot be undone.')) return;
+      try{ await deleteBoardFn(state.activeClassId, bid); }catch(err){ console.error('Delete board failed', err); }
+    });
+  });
+
+  document.querySelectorAll('[data-wb-export-board]').forEach(el=>{
+    el.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const bid = el.dataset.wbExportBoard;
+      const c = getClass(state.activeClassId);
+      const board = c && c.whiteboard ? c.whiteboard.boards.find(b=>b.id===bid) : null;
+      if(!board) return;
+      const originalHTML = el.innerHTML;
+      el.disabled = true;
+      el.textContent = 'Exporting…';
+      try{
+        const result = await exportBoardToDrive(state.activeClassId, board);
+        el.textContent = 'Exported ✓';
+        setTimeout(()=>{ el.disabled = false; el.innerHTML = originalHTML; }, 1800);
+        if(result && result.url) window.open(result.url, '_blank');
+      }catch(err){
+        console.error('Export board to Drive failed', err);
+        alert(err.message || 'Could not export this board to Drive.');
+        el.disabled = false;
+        el.innerHTML = originalHTML;
+      }
+    });
+  });
+
+  const wbBackBtn = document.getElementById('wbBackBtn');
+  if(wbBackBtn){
+    wbBackBtn.addEventListener('click', ()=>{
+      closeWhiteboardBoard();
+      state.wbView = 'dashboard'; state.wbFollowLive = false;
+      render();
+    });
+  }
+  const wbJumpLiveBtn = document.getElementById('wbJumpLiveBtn');
+  if(wbJumpLiveBtn){
+    wbJumpLiveBtn.addEventListener('click', ()=>{
+      const c = getClass(state.activeClassId);
+      state.wbFollowLive = true;
+      state.wbView = 'board';
+      openWhiteboardBoard(state.activeClassId, c.activeBoardId);
+      render();
+    });
+  }
+
+  document.querySelectorAll('[data-wb-color]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      state.wbColor = el.dataset.wbColor;
+      state.wbTool = 'pen';
+      document.querySelectorAll('.wb-color-swatch').forEach(s=>s.classList.remove('sel'));
+      el.classList.add('sel');
+      document.querySelectorAll('.wb-tool-btn').forEach(b=>b.classList.toggle('active', b.dataset.wbTool==='pen'));
+    });
+  });
+  document.querySelectorAll('[data-wb-tool]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      state.wbTool = el.dataset.wbTool;
+      document.querySelectorAll('.wb-tool-btn').forEach(b=>b.classList.remove('active'));
+      el.classList.add('active');
+    });
+  });
+  const wbSizeInput = document.getElementById('wbSize');
+  if(wbSizeInput){
+    wbSizeInput.addEventListener('input', ()=>{ state.wbWidth = Number(wbSizeInput.value); });
+  }
+  const wbClearBtn = document.getElementById('wbClearBtn');
+  if(wbClearBtn){
+    wbClearBtn.addEventListener('click', async ()=>{
+      if(!confirm('Clear all drawing on this page for everyone?')) return;
+      const board = findOpenBoard(); const page = findOpenPage();
+      if(!board || !page) return;
+      try{ await clearAllFn(state.activeClassId, board.id, page.id); }catch(e){ console.error('Clear all failed', e); }
+    });
+  }
+  const wbUndoBtn = document.getElementById('wbUndoBtn');
+  if(wbUndoBtn){
+    wbUndoBtn.addEventListener('click', async ()=>{
+      const board = findOpenBoard(); const page = findOpenPage();
+      if(!board || !page) return;
+      try{ await undoStrokeFn(state.activeClassId, board.id, page.id); }catch(e){ console.error('Undo failed', e); }
+    });
+  }
+  const wbRedoBtn = document.getElementById('wbRedoBtn');
+  if(wbRedoBtn){
+    wbRedoBtn.addEventListener('click', async ()=>{
+      const board = findOpenBoard(); const page = findOpenPage();
+      if(!board || !page) return;
+      try{ await redoStrokeFn(state.activeClassId, board.id, page.id); }catch(e){ console.error('Redo failed', e); }
+    });
+  }
+  bindWhiteboardChromeEvents();
+
+  renderPendingLinksInto('stream');
+  renderPendingLinksInto('newAssignment');
+  renderPendingLinksInto('submitWork');
+
+  const overlay = document.getElementById('overlay');
+  overlay.onclick = (e)=>{ if(e.target===overlay) closeModal(); };
+}
+
+// Delegated events for modal (modal content re-renders independently of the main app)
+document.addEventListener('click', async (e)=>{
+  if(e.target.matches('[data-close]')) closeModal();
+
+  const viewImgBtn = e.target.closest('[data-view-image]');
+  if(viewImgBtn){
+    openImageLightbox(viewImgBtn.dataset.imgUrl, viewImgBtn.dataset.imgName);
+    return;
+  }
+
+  const insertLinkBtn = e.target.closest('[data-insert-link-btn]');
+  if(insertLinkBtn){
+    const ctx = insertLinkBtn.dataset.ctx;
+    const host = document.getElementById(insertLinkBtn.dataset.host);
+    showLinkInsertPopover(host, (link)=>{
+      pendingLinks[ctx].push(link);
+      renderPendingLinksInto(ctx);
+    });
+    return;
+  }
+
+  if(e.target.matches('[data-remove-pending-link]')){
+    const ctx = e.target.dataset.ctx;
+    const idx = Number(e.target.dataset.idx);
+    if(pendingLinks[ctx]) pendingLinks[ctx].splice(idx, 1);
+    renderPendingLinksInto(ctx);
+    return;
+  }
+
+  if(e.target.matches('[data-del-assignment-att]')){
+    const btn = e.target;
+    const { class: cid, assignment: aid, idx } = btn.dataset;
+    if(!confirm('Remove this attachment from the assignment?')) return;
+    btn.disabled = true;
+    try{ await removeAssignmentAttachmentFn(cid, aid, Number(idx)); }
+    catch(err){ console.error('Remove assignment attachment failed', err); btn.disabled = false; }
+  }
+
+  if(e.target.matches('[data-del-stream-att]')){
+    const btn = e.target;
+    const { class: cid, post: pid, idx } = btn.dataset;
+    if(!confirm('Remove this attachment from the post?')) return;
+    btn.disabled = true;
+    try{ await removeStreamAttachmentFn(cid, pid, Number(idx)); }
+    catch(err){ console.error('Remove stream attachment failed', err); btn.disabled = false; }
+  }
+
+  if(e.target.matches('[data-del-submission-att]')){
+    const btn = e.target;
+    const { class: cid, assignment: aid, idx } = btn.dataset;
+    if(!confirm('Remove this attachment from your submission?')) return;
+    btn.disabled = true;
+    try{
+      await removeSubmissionAttachmentFn(cid, aid, Number(idx));
+      openModal('submitWork', cid, aid);
+    }catch(err){ console.error('Remove submission attachment failed', err); btn.disabled = false; }
+  }
+
+  if(e.target.matches('[data-swatch]')){
+    document.querySelectorAll('.swatch-opt').forEach(s=>s.classList.remove('sel'));
+    e.target.classList.add('sel');
+    document.getElementById('overlay').dataset.selectedColor = e.target.dataset.swatch;
+  }
+
+  if(e.target.matches('[data-save="newClass"]')){
+    const name = document.getElementById('mClassName').value.trim();
+    if(!name) return;
+    const section = document.getElementById('mSection').value.trim() || 'Section 1';
+    const room = document.getElementById('mRoom').value.trim() || 'TBD';
+    const color = document.getElementById('overlay').dataset.selectedColor || COLORS[0];
+
+    const limits = (state.userPlan && state.userPlan.limits) || FREE_LIMITS;
+    const ownedCount = Object.keys(ownedMap).length;
+    if(limits.maxClasses != null && ownedCount >= limits.maxClasses){
+      const errEl = document.getElementById('newClassLimitError');
+      if(errEl){ errEl.style.display='block'; errEl.innerHTML = `Free plan is limited to ${limits.maxClasses} classes — <a href="upgrade.html" style="color:var(--red-pen);font-weight:700;">upgrade to Pro</a> for unlimited classes.`; }
+      return;
+    }
+
+    try{
+      const newId = await createClassFn(name, section, room, color);
+      closeModal();
+      state.view='class'; state.classTab='stream';
+      openClass(newId);
+      render();
+    }catch(err){ console.error('Create class failed', err); }
+  }
+
+  if(e.target.matches('[data-save="joinClass"]')){
+    const codeInput = document.getElementById('mJoinCode');
+    const errEl = document.getElementById('joinError');
+    const res = await joinClassByCode(codeInput.value);
+    if(res.ok){
+      closeModal();
+      state.view='class'; state.classTab='stream';
+      openClass(res.classId);
+      render();
+    }else{
+      errEl.style.display='block';
+      errEl.textContent = res.msg;
+    }
+  }
+
+  if(e.target.matches('[data-save="newAssignment"]')){
+    const titleEl = document.getElementById('mTitle');
+    if(!titleEl) return;
+    const title = titleEl.value.trim();
+    const cid = document.getElementById('mClass').value;
+    const due = document.getElementById('mDue').value || state.todayISO;
+    const points = Number(document.getElementById('mPoints').value) || 100;
+    const desc = document.getElementById('mDesc').value.trim();
+    const fileInput = document.getElementById('mAttachments');
+    const files = (fileInput && fileInput.files) ? Array.from(fileInput.files) : [];
+    const links = pendingLinks.newAssignment || [];
+    if(!title || !cid) return;
+
+    const targetClass = getClass(cid) || classesMeta[cid];
+    const limits = effectiveLimitsFor(targetClass);
+    const currentItems = contentItemCount(targetClass);
+    if(limits.maxContentItemsPerClass != null && currentItems >= limits.maxContentItemsPerClass){
+      showLimitToast(`This class has reached the free plan's ${limits.maxContentItemsPerClass}-item limit (posts + assignments combined).`);
+      return;
+    }
+
+    const saveBtn = e.target;
+    const originalLabel = saveBtn.textContent;
+    saveBtn.disabled = true;
+    try{
+      const assignmentId = uid('a');
+      let attachments = [];
+      if(files.length){
+        saveBtn.textContent = 'Uploading files…';
+        attachments = await encodeAttachments(files, cid, 'attachments', assignmentId);
+      }
+      attachments = attachments.concat(links);
+      saveBtn.textContent = 'Saving…';
+      await addAssignmentFn(cid, { id: assignmentId, title, due, points, desc, attachments });
+      pendingLinks.newAssignment = [];
+      closeModal();
+      render();
+    }catch(err){
+      console.error('Add assignment failed', err);
+      const noteEl = document.querySelector('#modalBody .field-note');
+      if(noteEl){ noteEl.style.color = 'var(--red-pen)'; noteEl.textContent = err.message || 'Could not save assignment.'; }
+      saveBtn.disabled = false;
+      saveBtn.textContent = originalLabel;
+    }
+  }
+
+  if(e.target.matches('[data-save="editAssignment"]')){
+    const cid = e.target.dataset.class, aid = e.target.dataset.assignment;
+    const titleEl = document.getElementById('mEditTitle');
+    if(!titleEl) return;
+    const title = titleEl.value.trim();
+    const due = document.getElementById('mEditDue').value;
+    const pointsRaw = document.getElementById('mEditPoints').value;
+    const points = Number(pointsRaw);
+    const desc = document.getElementById('mEditDesc').value.trim();
+    if(!title || !due || pointsRaw==='' || isNaN(points) || points < 0) return;
+    const saveBtn = e.target;
+    const originalLabel = saveBtn.textContent;
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+    try{
+      await updateAssignmentFn(cid, aid, { title, due, points, desc });
+      closeModal();
+      render();
+    }catch(err){
+      console.error('Edit assignment failed', err);
+      const noteEl = document.getElementById('editPointsWarning');
+      if(noteEl){ noteEl.style.display=''; noteEl.style.color = 'var(--red-pen)'; noteEl.textContent = err.message || 'Could not save changes.'; }
+      saveBtn.disabled = false;
+      saveBtn.textContent = originalLabel;
+    }
+  }
+
+  if(e.target.matches('[data-save="submitWork"]')){
+    const cid = e.target.dataset.class, aid = e.target.dataset.assignment;
+    const fileInput = document.getElementById('mSubmitFiles');
+    const files = (fileInput && fileInput.files) ? Array.from(fileInput.files) : [];
+    const links = pendingLinks.submitWork || [];
+    const note = document.getElementById('mSubmitNote').value.trim();
+    const errNoteSelector = '#modalBody .field-note';
+    if(files.length===0 && !links.length && !note){
+      const noteEl = document.querySelector(errNoteSelector);
+      if(noteEl){ noteEl.style.color = 'var(--red-pen)'; noteEl.textContent = 'Attach at least one file or link, or add a note, before submitting.'; }
+      return;
+    }
+    const saveBtn = e.target;
+    const originalLabel = saveBtn.textContent;
+    saveBtn.disabled = true;
+    try{
+      if(files.length){ saveBtn.textContent = 'Uploading files…'; }
+      await submitAssignmentFn(cid, aid, files, note, links);
+      pendingLinks.submitWork = [];
+      closeModal();
+      render();
+    }catch(err){
+      console.error('Submit failed', err);
+      const noteEl = document.querySelector(errNoteSelector);
+      if(noteEl){ noteEl.style.color = 'var(--red-pen)'; noteEl.textContent = err.message || 'Could not submit.'; }
+      saveBtn.disabled = false;
+      saveBtn.textContent = originalLabel;
+    }
+  }
+
+  if(e.target.matches('[data-save="newStudent"]')){
+    const nameEl = document.getElementById('mStudentName');
+    if(!nameEl) return;
+    const name = nameEl.value.trim();
+    const cid = document.getElementById('mStudentClass').value;
+    if(!name || !cid) return;
+    try{
+      await addStudentFn(cid, name);
+      closeModal();
+      render();
+    }catch(err){ console.error('Add student failed', err); }
+  }
+});
+</script>
+</body>
+</html>
