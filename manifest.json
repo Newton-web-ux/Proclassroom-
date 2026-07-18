@@ -2,6 +2,7 @@
   "name": "Pro Classroom",
   "short_name": "Pro Classroom",
   "description": "A lightweight, Firebase-backed classroom dashboard — stream, classwork, grades, and live whiteboard.",
+  "id": "/",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
