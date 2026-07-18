@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Upgrade to Pro — Pro Classroom</title>
+<style>
+  :root{
+    --ink:#1F3A2E; --ink-2:#16281F; --parchment:#F6F1E4; --paper:#FFFDF7;
+    --ochre:#C68E17; --ochre-2:#E4A62B; --line: rgba(31,58,46,0.14); --line-strong: rgba(31,58,46,0.28);
+    --green:#2A6B3E; --red:#A6373B;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:Arial, Helvetica, sans-serif; background:var(--parchment);
+    min-height:100vh; display:flex; justify-content:center; align-items:flex-start;
+    padding:40px 16px;
+  }
+  .wrap{ width:100%; max-width:460px; }
+  .card{
+    background:var(--paper); padding:28px; border-radius:16px;
+    box-shadow:0 15px 35px rgba(31,58,46,.12); text-align:center; border:1px solid var(--line);
+  }
+  .badge{
+    display:inline-block; background:var(--ochre); color:#fff; padding:4px 12px;
+    border-radius:20px; font-size:12px; font-weight:700; margin-bottom:10px; letter-spacing:.03em;
+  }
+  h2{ margin:6px 0 2px; color:var(--ink); }
+  .sub{ color:#5b6b60; font-size:13.5px; margin:0 0 14px; }
+
+  #planStatus{
+    margin:0 0 16px; padding:10px 14px; border-radius:10px; font-size:13px; font-weight:600;
+    background:var(--parchment); color:var(--ink-2); border:1px solid var(--line);
+  }
+  #planStatus.is-pro{ background:#E1EEE3; color:var(--green); border-color:transparent; }
+  #planStatus.is-pending{ background:#FBEBD9; color:#95610A; border-color:transparent; }
+
+  /* Feature comparison table, matching Free vs Pro spec */
+  table.compare{ width:100%; border-collapse:collapse; margin:16px 0 20px; font-size:13px; text-align:left; }
+  table.compare th, table.compare td{ padding:9px 10px; border:1px solid var(--line); vertical-align:top; }
+  table.compare th{ background:var(--ink); color:#F1EDE0; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+  table.compare td.free{ color:#5b6b60; }
+  table.compare td.pro{ color:var(--ink); font-weight:600; }
+
+  .toggle{ display:flex; border-radius:12px; overflow:hidden; border:1px solid var(--ochre); margin:14px 0; }
+  .toggle button{ flex:1; padding:10px; border:none; cursor:pointer; font-size:14px; background:#fff; color:var(--ochre); font-weight:600; }
+  .toggle button.active{ background:var(--ochre); color:#fff; }
+
+  .amount{ font-size:28px; font-weight:700; color:var(--ink); margin:6px 0 2px; }
+  .amount .per{ font-size:13px; font-weight:500; color:#7b8a80; }
+
+  .qr{ width:210px; margin:16px auto 6px; display:block; border-radius:10px; border:1px solid var(--line); }
+
+  button.pay{
+    margin-top:14px; width:100%; padding:12px; border:none; border-radius:10px;
+    background:var(--ink); color:#fff; font-size:15px; font-weight:700; cursor:pointer;
+  }
+  button.pay:hover{ background:var(--ink-2); }
+  button.pay:disabled{ opacity:.6; cursor:not-allowed; }
+
+  .status{ margin-top:12px; font-size:13.5px; }
+  .success{ color:var(--green); }
+  .error{ color:var(--red); }
+  .note{ font-size:11.5px; color:#7b8a80; margin-top:10px; line-height:1.5; }
+
+  #googleBtn{
+    width:100%; min-height:44px; border-radius:10px; background:var(--ink); color:#F1EDE0;
+    font-weight:600; font-size:14px; border:none; cursor:pointer; margin-top:10px;
+  }
+  #googleBtn:hover{ background:var(--ink-2); }
+  .hidden{ display:none !important; }
+  a.back{ display:inline-block; margin-bottom:14px; font-size:13px; color:#5b6b60; text-decoration:none; }
+  a.back:hover{ color:var(--ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="./classroom.html">&larr; Back to dashboard</a>
+  <div class="card">
+    <div class="badge">MOST POPULAR</div>
+    <h2>⭐ Upgrade to Pro</h2>
+    <p class="sub">Best for teachers running more than a few classes</p>
+
+    <div id="planStatus">Checking your plan…</div>
+
+    <table class="compare">
+      <thead><tr><th>Feature</th><th>Free</th><th>Pro</th></tr></thead>
+      <tbody>
+        <tr><td>Classes</td><td class="free">10 classes</td><td class="pro">Unlimited</td></tr>
+        <tr><td>Posts, attachments &amp; assignments</td><td class="free">20 per class</td><td class="pro">Unlimited</td></tr>
+        <tr><td>Whiteboards</td><td class="free">1 board, 2 pages</td><td class="pro">Unlimited boards &amp; pages</td></tr>
+        <tr><td>Price</td><td class="free">Free</td><td class="pro">₹99/mo or ₹499/yr</td></tr>
+      </tbody>
+    </table>
+
+    <div id="signedOutBlock" class="hidden">
+      <p class="sub">Sign in with the same Google account you use in Pro Classroom to upgrade.</p>
+      <button id="googleBtn" type="button">Sign in with Google</button>
+    </div>
+
+    <div id="payBlock" class="hidden">
+      <div class="toggle">
+        <button type="button" id="monthlyBtn" class="active" onclick="selectPlan('monthly')">Monthly</button>
+        <button type="button" id="yearlyBtn" onclick="selectPlan('yearly')">Yearly</button>
+      </div>
+
+      <div class="amount" id="price">₹99 <span class="per">/ month</span></div>
+
+      <a id="upiLink" target="_blank">
+        <img id="qrImg" class="qr" alt="Scan to pay with GPay" />
+      </a>
+
+      <button class="pay" id="payBtn" onclick="markPaid()">I've paid via GPay</button>
+      <div class="status" id="status"></div>
+      <div class="note">Pro access unlocks after manual verification by the admin — usually within a day.</div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+
+/* ---------------- Config ---------------- */
+// Same Firebase project as classroom.html.
+const firebaseConfig = {
+  apiKey: "AIzaSyDvMlnUNrWyDi0-cW9GKBrNnAxBjwgZi8w",
+  authDomain: "pro-chat-be1aa.firebaseapp.com",
+  projectId: "pro-chat-be1aa",
+  storageBucket: "pro-chat-be1aa.firebasestorage.app",
+  messagingSenderId: "675633102778",
+  appId: "1:675633102778:web:8f68a16e2c7384fd52a783"
+};
+// Same deployed /exec URL as DRIVE_SYNC_URL in classroom.html — Code.gs
+// handles both file storage and billing from one script.
+const BACKEND_URL = "https://script.google.com/macros/s/AKfycbysaBBG8ztlW86tAxvecGr-s8L6xnv8i8Q1lJw6Na-WMOWPHskNYZXFwT_iIaXZAAmFIQ/exec";
+const UPI_PAYEE = "banerjeearnab.live@oksbi";
+const UPI_NAME = "Newtonian Academy";
+
+const fbApp = initializeApp(firebaseConfig);
+const auth = getAuth(fbApp);
+const provider = new GoogleAuthProvider();
+
+const PRICING = { monthly: 99, yearly: 499 };
+let selectedBilling = "monthly";
+let currentUser = null;
+
+/* ---------------- UI helpers ---------------- */
+function selectPlan(type){
+  selectedBilling = type;
+  document.getElementById("monthlyBtn").classList.toggle("active", type==="monthly");
+  document.getElementById("yearlyBtn").classList.toggle("active", type==="yearly");
+  const amt = PRICING[type];
+  document.getElementById("price").innerHTML = `₹${amt} <span class="per">/ ${type==='yearly'?'year':'month'}</span>`;
+  const upi = `upi://pay?pa=${UPI_PAYEE}&pn=${encodeURIComponent(UPI_NAME)}&am=${amt}&cu=INR`;
+  document.getElementById("upiLink").href = upi;
+  document.getElementById("qrImg").src = `https://api.qrserver.com/v1/create-qr-code/?size=210x210&data=${encodeURIComponent(upi)}`;
+}
+window.selectPlan = selectPlan;
+const urlBilling = new URLSearchParams(location.search).get('billing');
+selectPlan(urlBilling === 'yearly' ? 'yearly' : 'monthly');
+
+function backendConfigured(){
+  return BACKEND_URL && !BACKEND_URL.startsWith('PASTE_YOUR_');
+}
+
+async function callBackend(action, payload){
+  if(!backendConfigured()) throw new Error("Backend URL isn't configured yet — set BACKEND_URL in this file.");
+  const idToken = await currentUser.getIdToken();
+  const resp = await fetch(BACKEND_URL, { method: 'POST', body: JSON.stringify({ action, idToken, ...payload }) });
+  if(!resp.ok) throw new Error('Request failed (HTTP ' + resp.status + ')');
+  const data = await resp.json();
+  if(!data.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+async function refreshPlanStatus(){
+  const el = document.getElementById('planStatus');
+  try{
+    const data = await callBackend('getUserPlan', {});
+    el.classList.remove('is-pro','is-pending');
+    if(data.hasPendingPayment){
+      el.classList.add('is-pending');
+      el.textContent = "Payment submitted — awaiting approval.";
+      document.getElementById('payBtn').disabled = true;
+      document.getElementById('payBtn').textContent = 'Payment submitted';
+    }else if(data.plan === 'pro'){
+      el.classList.add('is-pro');
+      const exp = data.expiryDate ? new Date(data.expiryDate).toDateString() : '';
+      el.textContent = `You're on Pro${exp? ' until '+exp : ''}. Enjoy unlimited classes, posts, and whiteboards.`;
+    }else{
+      el.textContent = "You're on the Free plan.";
+    }
+  }catch(err){
+    console.error('getUserPlan failed', err);
+    el.textContent = 'Could not load your plan status: ' + err.message;
+  }
+}
+
+async function markPaid(){
+  const status = document.getElementById("status");
+  const btn = document.getElementById("payBtn");
+  if(!currentUser){ status.innerHTML = "<span class='error'>Please sign in first.</span>"; return; }
+
+  btn.disabled = true;
+  btn.textContent = "Submitting…";
+  status.textContent = "";
+
+  try{
+    await callBackend('submitPayment', { plan: 'pro', billing: selectedBilling, method: 'gpay' });
+    btn.textContent = "Payment submitted";
+    status.innerHTML = "<span class='success'>Payment request submitted ✔️ You'll get Pro access after approval.</span>";
+    refreshPlanStatus();
+  }catch(err){
+    console.error('submitPayment failed', err);
+    btn.disabled = false;
+    btn.textContent = "I've paid via GPay";
+    status.innerHTML = `<span class='error'>${err.message || 'Submission failed. Try again.'}</span>`;
+  }
+}
+window.markPaid = markPaid;
+
+/* ---------------- Auth ---------------- */
+document.getElementById('googleBtn').addEventListener('click', ()=>{
+  signInWithPopup(auth, provider).catch(e=>{
+    console.error('Sign-in failed', e);
+    document.getElementById('status').innerHTML = `<span class='error'>Sign-in failed: ${e.message}</span>`;
+  });
+});
+
+onAuthStateChanged(auth, (user)=>{
+  currentUser = user;
+  document.getElementById('signedOutBlock').classList.toggle('hidden', !!user);
+  document.getElementById('payBlock').classList.toggle('hidden', !user);
+  if(user){
+    if(backendConfigured()) refreshPlanStatus();
+    else document.getElementById('planStatus').textContent = 'Backend not configured yet — see BACKEND_URL in this file.';
+  }else{
+    document.getElementById('planStatus').textContent = 'Sign in to see your plan.';
+  }
+});
+</script>
+</body>
+</html>
